@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: breathe-easy-predict-web
+    repo: https://github.com/sohamchandane/safesphere
+    branch: main
+    buildCommand: "npm ci --include=dev && npm run build"
+    startCommand: "npm run preview -- --port $PORT"
+    env:
+      NPM_CONFIG_PRODUCTION: "false"
+  - type: web
+    name: breathe-easy-predict-api
+    repo: https://github.com/sohamchandane/safesphere
+    branch: main
+    root: api
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
+    env:
+      PRED_API_KEY: "123123123123"
