@@ -61,51 +61,23 @@ export const RegisterForm = () => {
     setLoading(true);
 
     try {
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: personalInfo.email,
-        password: personalInfo.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+      // Call the backend registration API (which uses service role to bypass RLS)
+      const apiUrl = import.meta.env.VITE_PRED_API_URL || (window as any).REACT_APP_PRED_API_URL || '/api';
+      const baseUrl = new URL(apiUrl).origin; // Extract base URL
+      const registerUrl = `${baseUrl}/register`;
+
+      const response = await fetch(registerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      });
-
-      if (authError) throw authError;
-
-      if (!authData.user) {
-        throw new Error('Registration failed');
-      }
-
-      // After signup, the session may not be automatically set. We need to refresh to get a valid session
-      // that will pass RLS checks for the new user's data
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !sessionData.session) {
-        // If getSession fails, use the signup response data directly
-        // In some cases the access_token is available in authData
-        console.warn('Session not immediately available after signup, proceeding with insert');
-      }
-
-      // Create profile with the new user's ID using upsert (more forgiving of RLS)
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: authData.user.id,
+        body: JSON.stringify({
+          email: personalInfo.email,
+          password: personalInfo.password,
           username: personalInfo.username,
           dob: personalInfo.dob,
           gender: personalInfo.gender,
           phone_number: personalInfo.phoneNumber,
-        }, { onConflict: 'id' });
-
-      if (profileError) {
-        console.error('Profile insert error:', profileError);
-        throw profileError;
-      }
-
-      // Create medical history
-      const { error: medicalError } = await supabase
-        .from('medical_history')
-        .insert({
-          user_id: authData.user.id,
           diagnosis_status: medicalHistory.diagnosisStatus,
           diagnosis_date: medicalHistory.diagnosisDate || null,
           known_triggers: medicalHistory.knownTriggers,
@@ -116,16 +88,19 @@ export const RegisterForm = () => {
           smoking_status: medicalHistory.smokingStatus,
           family_history: medicalHistory.familyHistory,
           chronic_conditions: medicalHistory.chronicConditions,
-        });
+        }),
+      });
 
-      if (medicalError) {
-        console.error('Medical history insert error:', medicalError);
-        throw medicalError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Registration failed');
       }
+
+      const result = await response.json();
 
       toast({
         title: 'Registration successful!',
-        description: 'Your account has been created. You can now sign in.',
+        description: 'Your account has been created. Please check your email to confirm.',
       });
 
       navigate('/auth');

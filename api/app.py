@@ -143,3 +143,95 @@ def predict(req: PredictRequest, request: Request, x_api_key: str | None = Heade
         pass
 
     return resp
+
+
+# ============================================================================
+# REGISTRATION ENDPOINT (uses service_role to bypass RLS)
+# ============================================================================
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    username: str
+    dob: str  # YYYY-MM-DD
+    gender: str
+    phone_number: str
+    # Medical history fields
+    diagnosis_status: bool
+    diagnosis_date: str | None = None
+    known_triggers: list | None = None
+    attack_history: dict | None = None
+    current_symptoms: list | None = None
+    respiratory_issues: list | None = None
+    allergies: list | None = None
+    smoking_status: str = "never"
+    family_history: bool = False
+    chronic_conditions: list | None = None
+
+
+@app.post("/register")
+async def register(req: RegisterRequest):
+    """
+    Register a new user with profile and medical history.
+    Uses Supabase service role to bypass RLS during registration.
+    """
+    try:
+        from supabase import create_client
+        import json
+        
+        # Get Supabase credentials from environment
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not supabase_service_role_key:
+            raise HTTPException(status_code=500, detail="Supabase credentials not configured")
+        
+        # Create Supabase client with service role (bypasses RLS)
+        supabase = create_client(supabase_url, supabase_service_role_key)
+        
+        # 1. Sign up the user
+        auth_response = supabase.auth.admin.create_user({
+            "email": req.email,
+            "password": req.password,
+            "email_confirm": False,  # User needs to confirm email
+        })
+        
+        user_id = auth_response.user.id
+        
+        # 2. Create profile (using service role, so RLS doesn't apply)
+        profile_data = {
+            "id": user_id,
+            "username": req.username,
+            "dob": req.dob,
+            "gender": req.gender,
+            "phone_number": req.phone_number,
+        }
+        
+        supabase.table("profiles").insert(profile_data).execute()
+        
+        # 3. Create medical history
+        medical_data = {
+            "user_id": user_id,
+            "diagnosis_status": req.diagnosis_status,
+            "diagnosis_date": req.diagnosis_date,
+            "known_triggers": req.known_triggers or [],
+            "attack_history": req.attack_history or {},
+            "current_symptoms": req.current_symptoms or [],
+            "respiratory_issues": req.respiratory_issues or [],
+            "allergies": req.allergies or [],
+            "smoking_status": req.smoking_status,
+            "family_history": req.family_history,
+            "chronic_conditions": req.chronic_conditions or [],
+        }
+        
+        supabase.table("medical_history").insert(medical_data).execute()
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "message": "User registered successfully. Please check your email to confirm.",
+        }
+    
+    except Exception as e:
+        print(f"Registration error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
