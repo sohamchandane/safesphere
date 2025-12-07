@@ -203,11 +203,11 @@ async def register(req: RegisterRequest):
             # If we can't list users, try to create anyway (will fail if duplicate)
             print(f"Could not check existing users: {e}")
         
-        # 2. Sign up the user
+        # 2. Sign up the user and mark email as confirmed so login works immediately
         auth_response = supabase.auth.admin.create_user({
             "email": req.email,
             "password": req.password,
-            "email_confirm": False,  # User needs to confirm email
+            "email_confirm": True,
         })
         
         user_id = auth_response.user.id
