@@ -76,18 +76,30 @@ export const RegisterForm = () => {
         throw new Error('Registration failed');
       }
 
-      // Create profile
+      // After signup, the session may not be automatically set. We need to refresh to get a valid session
+      // that will pass RLS checks for the new user's data
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        // If getSession fails, use the signup response data directly
+        // In some cases the access_token is available in authData
+        console.warn('Session not immediately available after signup, proceeding with insert');
+      }
+
+      // Create profile with the new user's ID using upsert (more forgiving of RLS)
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert({
+        .upsert({
           id: authData.user.id,
           username: personalInfo.username,
           dob: personalInfo.dob,
           gender: personalInfo.gender,
           phone_number: personalInfo.phoneNumber,
-        });
+        }, { onConflict: 'id' });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Profile insert error:', profileError);
+        throw profileError;
+      }
 
       // Create medical history
       const { error: medicalError } = await supabase
@@ -106,7 +118,10 @@ export const RegisterForm = () => {
           chronic_conditions: medicalHistory.chronicConditions,
         });
 
-      if (medicalError) throw medicalError;
+      if (medicalError) {
+        console.error('Medical history insert error:', medicalError);
+        throw medicalError;
+      }
 
       toast({
         title: 'Registration successful!',

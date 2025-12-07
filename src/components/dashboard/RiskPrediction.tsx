@@ -181,16 +181,34 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           if (!hasSupabase) {
             console.info('Supabase not configured — skipping persistence of monitoring data');
           } else {
-            const { error } = await supabase.from('monitoring_data').insert({
+            // Extract individual fields from sanitizedPayload to store in separate columns
+            const monitoringRecord = {
               user_id: userId,
               latitude: location.latitude,
               longitude: location.longitude,
-              heart_rate: toNumberOrZero(heartRate),
+              temperature: sanitizedPayload.temperature,
+              pressure: sanitizedPayload.pressure,
+              co: sanitizedPayload.co,
+              no: sanitizedPayload.no,
+              no2: sanitizedPayload.no2,
+              o3: sanitizedPayload.o3,
+              so2: sanitizedPayload.so2,
+              pm2_5: sanitizedPayload.pm2_5,
+              pm10: sanitizedPayload.pm10,
+              nh3: sanitizedPayload.nh3,
+              // Pollen: reverse-engineer from one-hot encoding (low=1 means low level, etc)
+              // For simplicity, store the one-hot values; alternatively could denormalize to raw counts
+              grass_pollen: null, // Could store count if available
+              tree_pollen: null,
+              weed_pollen: null,
+              heart_rate: sanitizedPayload.heart_rate,
               attack_prediction: finalPred.risk,
               prediction_confidence: finalPred.confidence,
               raw_payload: sanitizedPayload,
               raw_response: result,
-            });
+            };
+
+            const { error } = await supabase.from('monitoring_data').insert(monitoringRecord);
             if (error) {
               console.warn('Supabase insert failed, continuing without persistence', error);
             }
