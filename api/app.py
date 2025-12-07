@@ -190,11 +190,18 @@ async def register(req: RegisterRequest):
         supabase = create_client(supabase_url, supabase_service_role_key)
         
         # 1. Check if user already exists by email
-        existing_users = supabase.auth.admin.list_users()
-        user_already_exists = any(u.email == req.email for u in existing_users.users)
-        
-        if user_already_exists:
-            raise HTTPException(status_code=409, detail="User with this email already exists")
+        try:
+            existing_users = supabase.auth.admin.list_users()
+            # list_users() returns a list directly, not an object with .users attribute
+            user_already_exists = any(u.email == req.email for u in existing_users)
+            
+            if user_already_exists:
+                raise HTTPException(status_code=409, detail="User with this email already exists")
+        except HTTPException:
+            raise
+        except Exception as e:
+            # If we can't list users, try to create anyway (will fail if duplicate)
+            print(f"Could not check existing users: {e}")
         
         # 2. Sign up the user
         auth_response = supabase.auth.admin.create_user({

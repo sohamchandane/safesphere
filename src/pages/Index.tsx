@@ -10,12 +10,6 @@ const Index = () => {
       {/* Hero Section */}
       <div className="container mx-auto px-4 py-20">
         <div className="max-w-4xl mx-auto text-center space-y-8">
-          <div className="flex justify-center">
-            <div className="bg-gradient-hero p-6 rounded-3xl shadow-elevation">
-              <Activity className="h-16 w-16 text-white" />
-            </div>
-          </div>
-          
           <h1 className="text-5xl font-bold text-foreground leading-tight">
             Predict Asthma Attacks<br />
             <span className="bg-gradient-hero bg-clip-text text-transparent">
