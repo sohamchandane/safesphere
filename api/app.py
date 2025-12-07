@@ -160,7 +160,7 @@ class RegisterRequest(BaseModel):
     diagnosis_status: bool
     diagnosis_date: str | None = None
     known_triggers: list | None = None
-    attack_history: dict | None = None
+    attack_history: list | dict | None = None  # Accept both list and dict
     current_symptoms: list | None = None
     respiratory_issues: list | None = None
     allergies: list | None = None
@@ -210,12 +210,15 @@ async def register(req: RegisterRequest):
         supabase.table("profiles").insert(profile_data).execute()
         
         # 3. Create medical history
+        # Convert attack_history to proper JSONB format (array or object both work)
+        attack_history_value = req.attack_history if req.attack_history is not None else []
+        
         medical_data = {
             "user_id": user_id,
             "diagnosis_status": req.diagnosis_status,
             "diagnosis_date": req.diagnosis_date,
             "known_triggers": req.known_triggers or [],
-            "attack_history": req.attack_history or {},
+            "attack_history": attack_history_value,
             "current_symptoms": req.current_symptoms or [],
             "respiratory_issues": req.respiratory_issues or [],
             "allergies": req.allergies or [],

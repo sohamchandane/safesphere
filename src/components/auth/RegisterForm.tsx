@@ -62,8 +62,9 @@ export const RegisterForm = () => {
 
     try {
       // Call the backend registration API (which uses service role to bypass RLS)
-      const apiUrl = import.meta.env.VITE_PRED_API_URL || (window as any).REACT_APP_PRED_API_URL || '/api';
-      const baseUrl = new URL(apiUrl).origin; // Extract base URL
+      const apiUrl = import.meta.env.VITE_PRED_API_URL || (window as any).REACT_APP_PRED_API_URL || '/api/predict';
+      // Remove '/predict' from the end if it exists to get the base API URL
+      const baseUrl = apiUrl.replace(/\/predict$/, '');
       const registerUrl = `${baseUrl}/register`;
 
       const response = await fetch(registerUrl, {
@@ -92,8 +93,12 @@ export const RegisterForm = () => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Registration failed');
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error('Registration API error:', response.status, errorData);
+        const errorMessage = typeof errorData.detail === 'string' 
+          ? errorData.detail 
+          : JSON.stringify(errorData.detail || errorData);
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
