@@ -189,7 +189,14 @@ async def register(req: RegisterRequest):
         # Create Supabase client with service role (bypasses RLS)
         supabase = create_client(supabase_url, supabase_service_role_key)
         
-        # 1. Sign up the user
+        # 1. Check if user already exists by email
+        existing_users = supabase.auth.admin.list_users()
+        user_already_exists = any(u.email == req.email for u in existing_users.users)
+        
+        if user_already_exists:
+            raise HTTPException(status_code=409, detail="User with this email already exists")
+        
+        # 2. Sign up the user
         auth_response = supabase.auth.admin.create_user({
             "email": req.email,
             "password": req.password,
@@ -198,7 +205,8 @@ async def register(req: RegisterRequest):
         
         user_id = auth_response.user.id
         
-        # 2. Create profile (using service role, so RLS doesn't apply)
+        # 3. Upsert profile (using service role, so RLS doesn't apply)
+        # Upsert allows atomic update-or-insert, so retries won't fail
         profile_data = {
             "id": user_id,
             "username": req.username,
@@ -207,9 +215,9 @@ async def register(req: RegisterRequest):
             "phone_number": req.phone_number,
         }
         
-        supabase.table("profiles").insert(profile_data).execute()
+        supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
         
-        # 3. Create medical history
+        # 4. Upsert medical history
         # Convert attack_history to proper JSONB format (array or object both work)
         attack_history_value = req.attack_history if req.attack_history is not None else []
         
@@ -227,7 +235,7 @@ async def register(req: RegisterRequest):
             "chronic_conditions": req.chronic_conditions or [],
         }
         
-        supabase.table("medical_history").insert(medical_data).execute()
+        supabase.table("medical_history").upsert(medical_data, on_conflict="user_id").execute()
         
         return {
             "success": True,
@@ -235,6 +243,9 @@ async def register(req: RegisterRequest):
             "message": "User registered successfully. Please check your email to confirm.",
         }
     
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 409 conflict)
+        raise
     except Exception as e:
         print(f"Registration error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
