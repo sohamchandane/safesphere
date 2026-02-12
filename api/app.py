@@ -9,6 +9,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from the root .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 app = FastAPI(title="Asthma Risk Prediction API")
 
@@ -94,7 +98,9 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
 
     # Only send if risk is high or there are alerts
     is_high_risk = prediction_prob >= 0.5
+    
     if not is_high_risk and not alerts:
+        print(f"DEBUG: Email skipped. Risk is {prediction_prob:.2f} (Low) and no environmental alerts found.")
         return
 
     subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Environmental Alert for {username}"
@@ -222,10 +228,13 @@ def predict(req: PredictRequest, request: Request, background_tasks: BackgroundT
 
     # Send email alert in background
     if req.email:
+        print(f"DEBUG: Scheduling email to {req.email} (Risk Prob: {proba:.2f})")
         # Add lat/long/timestamp to features if not present, for email body
         # They might be in req.features but might be named differently
         # Use what we have
         background_tasks.add_task(send_alert_email, req.email, req.username or "User", proba, req.features)
+    else:
+        print("DEBUG: Request received but no email address provided in payload.")
 
     return resp
 
