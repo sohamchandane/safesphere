@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import * as externalApis from '@/lib/externalApis';
 
 interface RiskPredictionProps {
@@ -12,6 +13,7 @@ interface RiskPredictionProps {
 }
 
 export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionProps) => {
+  const { user } = useAuth();
   const [prediction, setPrediction] = useState<{
     risk: boolean;
     confidence: number;
@@ -129,6 +131,9 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           weed_pollen_Low: toNumberOrZero(payload.weed_pollen_Low),
           weed_pollen_Moderate: toNumberOrZero(payload.weed_pollen_Moderate),
           weed_pollen_Very_High: toNumberOrZero(payload.weed_pollen_Very_High),
+          // Add location data for display in email if needed (even if not used by model pipeline)
+          latitude: location.latitude,
+          longitude: location.longitude,
         };
 
         // Call backend prediction API (assumes /api/predict exists and uses API key)
@@ -144,7 +149,11 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
             // you can inspect the full packet in the browser Network panel.
             'x-echo-payload': '1',
           },
-          body: JSON.stringify({ features: sanitizedPayload }),
+          body: JSON.stringify({ 
+            features: sanitizedPayload,
+            email: user?.email,
+            username: user?.user_metadata?.username || user?.email?.split('@')[0] || 'User',
+          }),
         });
 
         if (!resp.ok) {

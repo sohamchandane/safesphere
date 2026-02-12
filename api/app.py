@@ -1,10 +1,14 @@
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import joblib
 import numpy as np
 import pandas as pd
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from datetime import datetime
 
 app = FastAPI(title="Asthma Risk Prediction API")
 
@@ -45,6 +49,8 @@ else:
 
 class PredictRequest(BaseModel):
     features: dict
+    email: str | None = None
+    username: str | None = None
 
 
 def canonical_name(s: str | None) -> str:
@@ -60,9 +66,81 @@ def auth_ok(x_api_key: str | None) -> bool:
         return True
     return x_api_key == required
 
+def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
+    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
+    smtp_username = os.environ.get('SMTP_USERNAME')
+    smtp_password = os.environ.get('SMTP_PASSWORD')
+
+    if not smtp_username or not smtp_password:
+        print("SMTP credentials not configured. Skipping email.")
+        return
+
+    # Check for unusually high values
+    alerts = []
+    thresholds = {
+        'pm2_5': 35,
+        'pm10': 50,
+        'o3': 100,
+        'no2': 40,
+        'so2': 20,
+        'co': 4
+    }
+    
+    for key, limit in thresholds.items():
+        val = features.get(key)
+        if val is not None and isinstance(val, (int, float)) and val > limit:
+            alerts.append(f"- {key.upper()}: {val} (High, > {limit})")
+
+    # Only send if risk is high or there are alerts
+    is_high_risk = prediction_prob >= 0.5
+    if not is_high_risk and not alerts:
+        return
+
+    subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Environmental Alert for {username}"
+    
+    body = f"""
+    Hello {username},
+    
+    Here is your latest asthma risk assessment.
+    
+    Prediction Risk: {int(prediction_prob * 100)}%
+    Status: {"HIGH RISK" if is_high_risk else "Low/Moderate Risk"}
+    
+    Location:
+    Lat: {features.get('latitude', 'N/A')}
+    Long: {features.get('longitude', 'N/A')}
+    Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+    
+    Heart Rate: {features.get('heart_rate', 'N/A')}
+    Temperature: {features.get('temperature', 'N/A')}
+    """
+    
+    if alerts:
+        body += "\n\nWARNING - Unexpectedly High Datapoints:\n" + "\n".join(alerts)
+        
+    body += "\n\nStay Safe,\nBreathe Easy Team"
+
+    msg = MIMEMultipart()
+    msg['From'] = smtp_username
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        text = msg.as_string()
+        server.sendmail(smtp_username, to_email, text)
+        server.quit()
+        print(f"Alert email sent to {to_email}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
 
 @app.post('/predict')
-def predict(req: PredictRequest, request: Request, x_api_key: str | None = Header(None)):
+def predict(req: PredictRequest, request: Request, background_tasks: BackgroundTasks, x_api_key: str | None = Header(None)):
     if not auth_ok(x_api_key):
         raise HTTPException(status_code=401, detail='Invalid API key')
 
@@ -142,6 +220,13 @@ def predict(req: PredictRequest, request: Request, x_api_key: str | None = Heade
         # don't fail prediction because echoing failed
         pass
 
+    # Send email alert in background
+    if req.email:
+        # Add lat/long/timestamp to features if not present, for email body
+        # They might be in req.features but might be named differently
+        # Use what we have
+        background_tasks.add_task(send_alert_email, req.email, req.username or "User", proba, req.features)
+
     return resp
 
 
@@ -156,7 +241,7 @@ class RegisterRequest(BaseModel):
     dob: str  # YYYY-MM-DD
     gender: str
     phone_number: str
-    email_id: str
+    email_id: str | None = None
     # Medical history fields
     diagnosis_status: bool
     diagnosis_date: str | None = None
@@ -221,7 +306,7 @@ async def register(req: RegisterRequest):
             "dob": req.dob,
             "gender": req.gender,
             "phone_number": req.phone_number,
-            "email_id": req.email_id,
+            "email_id": req.email_id or req.email,
         }
         
         supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
