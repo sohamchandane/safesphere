@@ -134,15 +134,34 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     msg.attach(MIMEText(body, 'plain'))
 
     try:
+        print(f"DEBUG: Attempting to connect to SMTP {smtp_server}:{smtp_port}")
+        
+        # Explicit handling for Gmail port 587 (STARTTLS)
         server = smtplib.SMTP(smtp_server, smtp_port)
+        server.set_debuglevel(1)  # Enable debug output for SMTP
+        
+        print("DEBUG: Sending EHLO")
+        server.ehlo()
+        
+        print("DEBUG: Starting TLS")
         server.starttls()
+        
+        print("DEBUG: Sending EHLO after TLS")
+        server.ehlo()
+        
+        print(f"DEBUG: Logging in as {smtp_username}")
         server.login(smtp_username, smtp_password)
+        
         text = msg.as_string()
+        print(f"DEBUG: Sending mail to {to_email}")
         server.sendmail(smtp_username, to_email, text)
+        
         server.quit()
         print(f"Alert email sent to {to_email}")
     except Exception as e:
+        import traceback
         print(f"Failed to send email: {e}")
+        traceback.print_exc()
 
 
 @app.post('/predict')
