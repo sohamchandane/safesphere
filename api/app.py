@@ -136,21 +136,28 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     try:
         print(f"DEBUG: Attempting to connect to SMTP {smtp_server}:{smtp_port}")
         
-        # Explicit handling for Gmail port 587 (STARTTLS)
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.set_debuglevel(1)  # Enable debug output for SMTP
-        
-        print("DEBUG: Sending EHLO")
-        server.ehlo()
-        
-        print("DEBUG: Starting TLS")
-        server.starttls()
-        
-        print("DEBUG: Sending EHLO after TLS")
-        server.ehlo()
-        
-        print(f"DEBUG: Logging in as {smtp_username}")
-        server.login(smtp_username, smtp_password)
+        if smtp_port == 465:
+            # Use SMTP_SSL for port 465 (Implicit SSL)
+            print("DEBUG: Using SMTP_SSL (Implicit SSL)")
+            server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            server.set_debuglevel(1)
+            server.ehlo()
+            
+            print(f"DEBUG: Logging in as {smtp_username}")
+            server.login(smtp_username, smtp_password)
+        else:
+            # Use STARTTLS for 587 or others
+            print("DEBUG: Using SMTP + STARTTLS")
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.set_debuglevel(1)
+            server.ehlo()
+            
+            print("DEBUG: Starting TLS")
+            server.starttls()
+            server.ehlo()
+            
+            print(f"DEBUG: Logging in as {smtp_username}")
+            server.login(smtp_username, smtp_password)
         
         text = msg.as_string()
         print(f"DEBUG: Sending mail to {to_email}")
