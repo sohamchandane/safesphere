@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   dob DATE NOT NULL,
   gender TEXT NOT NULL CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
   phone_number TEXT,
+  email_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

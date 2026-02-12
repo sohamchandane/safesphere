@@ -153,6 +153,7 @@ export type Database = {
           gender: string
           id: string
           phone_number: string | null
+          email_id: string | null
           updated_at: string | null
           username: string
         }
@@ -162,6 +163,7 @@ export type Database = {
           gender: string
           id: string
           phone_number?: string | null
+          email_id?: string | null
           updated_at?: string | null
           username: string
         }
@@ -171,6 +173,7 @@ export type Database = {
           gender?: string
           id?: string
           phone_number?: string | null
+          email_id?: string | null
           updated_at?: string | null
           username?: string
         }

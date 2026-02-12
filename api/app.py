@@ -156,6 +156,7 @@ class RegisterRequest(BaseModel):
     dob: str  # YYYY-MM-DD
     gender: str
     phone_number: str
+    email_id: str
     # Medical history fields
     diagnosis_status: bool
     diagnosis_date: str | None = None
@@ -220,6 +221,7 @@ async def register(req: RegisterRequest):
             "dob": req.dob,
             "gender": req.gender,
             "phone_number": req.phone_number,
+            "email_id": req.email_id,
         }
         
         supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
