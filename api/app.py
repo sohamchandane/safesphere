@@ -99,11 +99,11 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     # Only send if risk is high or there are alerts
     is_high_risk = prediction_prob >= 0.5
     
-    if not is_high_risk and not alerts:
-        print(f"DEBUG: Email skipped. Risk is {prediction_prob:.2f} (Low) and no environmental alerts found.")
-        return
+    # if not is_high_risk and not alerts:
+    #     print(f"DEBUG: Email skipped. Risk is {prediction_prob:.2f} (Low) and no environmental alerts found.")
+    #     return
 
-    subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Environmental Alert for {username}"
+    subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Asthma Risk Update for {username}"
     
     body = f"""
     Hello {username},
