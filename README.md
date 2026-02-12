@@ -1,73 +1,107 @@
-# Welcome to your Lovable project
+# Breathe Easy Predict
 
-## Project info
+Breathe Easy Predict is an integrated asthma risk monitoring and prediction application. It combines real-time environmental data (weather, pollen, air quality) with user health metrics to predict the risk of asthma attacks using a machine learning model.
 
-**URL**: https://lovable.dev/projects/9dbe866a-3c7a-455a-9fe5-532c4a01f4c3
+## Features
 
-## How can I edit this code?
+- **Risk Prediction**: Uses a Bagging Classifier model to predict asthma attack risk based on environmental factors (temperature, pressure, pollutants) and user history.
+- **Real-time Monitoring**: Displays current temperature, air quality index, and individual pollutant levels (CO, NO2, O3, PM2.5, etc.).
+- **Dashboard**: User-friendly dashboard for tracking health status, environmental conditions, and attack history.
+- **User Authentication**: Secure login and registration powered by Supabase.
+- **Location-based Services**: Fetches local weather and pollution data based on user location.
+- **Pollen Data**: Tracks pollen levels (grass, tree, weed) to improve prediction accuracy.
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, Shadcn UI
+- **Backend API**: Python, FastAPI, Scikit-learn
+- **Database & Auth**: Supabase
+- **External APIs**: OpenWeatherMap
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/9dbe866a-3c7a-455a-9fe5-532c4a01f4c3) and start prompting.
+## Prerequisites
 
-Changes made via Lovable will be committed automatically to this repo.
+Before you begin, ensure you have the following installed:
+- [Node.js](https://nodejs.org/) (v16 or higher)
+- [Python](https://www.python.org/) (v3.8 or higher)
+- A [Supabase](https://supabase.com/) account
+- An [OpenWeatherMap](https://openweathermap.org/) API key
 
-**Use your preferred IDE**
+## Installation & Setup
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+### 1. Clone the repository
+```bash
+git clone https://github.com/sohamchandane/safesphere.git
+cd breathe-easy-predict
 ```
 
-**Edit a file directly in GitHub**
+### 2. Frontend Setup
+Navigate to the root directory and install dependencies:
+```bash
+npm install
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 3. Backend Setup
+Navigate to the `api` folder, set up a virtual environment, and install dependencies:
+```bash
+cd api
+python -m venv venv
 
-**Use GitHub Codespaces**
+# Activate virtual environment:
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+pip install -r requirements.txt
+cd ..
+```
 
-## What technologies are used for this project?
+### 4. Environment Configuration
+Create a `.env` file in the root directory (same level as `package.json`) with the following variables:
 
-This project is built with:
+```env
+# Supabase Configuration
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+# External APIs
+VITE_OPENWEATHER_API_KEY=your_openweather_api_key
 
-## How can I deploy this project?
+# Prediction API (Local Backend)
+VITE_PRED_API_URL=http://localhost:8000/predict
+```
 
-Simply open [Lovable](https://lovable.dev/projects/9dbe866a-3c7a-455a-9fe5-532c4a01f4c3) and click on Share -> Publish.
+## Running the Application
 
-## Can I connect a custom domain to my Lovable project?
+You need to run both the Python backend and the React frontend simultaneously.
 
-Yes, you can!
+**1. Start the Backend Server**
+Open a terminal, navigate to the `api` folder, and run:
+```bash
+# Ensure your virtual environment is activated
+uvicorn app:app --reload --port 8000
+```
+The API serves predictions and will be available at `http://localhost:8000`.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+**2. Start the Frontend Development Server**
+Open a new terminal in the root directory and run:
+```bash
+npm run dev
+```
+The application will be accessible at `http://localhost:8080`.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Project Structure
+
+- `src/`: Frontend React application.
+  - `components/`: UI components (Dashboard, RiskPrediction, etc.).
+  - `pages/`: Main views (Auth, Dashboard, Register).
+  - `integrations/supabase/`: Database connection and types.
+- `api/`: Python backend for ML predictions.
+  - `app.py`: FastAPI application entry point.
+  - `model/`: Contains the trained `bagging_model.joblib`.
+- `public/`: Static assets.
+
+## Troubleshooting
+
+- **Model Loading Error**: If the API warns about "No model artifact found", ensure `bagging_model.joblib` exists in `api/model/` or `public/`.
+- **CORS Issues**: The backend is configured to allow all origins (`*`). If you change ports or deployment method, verify the CORS middleware in `api/app.py`.
