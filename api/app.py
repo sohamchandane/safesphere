@@ -6,6 +6,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
@@ -72,19 +73,8 @@ def auth_ok(x_api_key: str | None) -> bool:
 
 def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
     print(f"DEBUG: send_alert_email called for {to_email}")
-    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
-    smtp_port = int(os.environ.get('SMTP_PORT', 587))
-    smtp_username = os.environ.get('SMTP_USERNAME')
-    smtp_password = os.environ.get('SMTP_PASSWORD')
-
-    if not smtp_username or not smtp_password:
-        missing = []
-        if not smtp_username:
-            missing.append("SMTP_USERNAME")
-        if not smtp_password:
-            missing.append("SMTP_PASSWORD")
-        print(f"SMTP credentials not configured. Missing: {', '.join(missing)}. Skipping email.")
-        return
+    resend_api_key = os.environ.get('RESEND_API_KEY')
+    resend_from = os.environ.get('RESEND_FROM')
 
     # Check for unusually high values
     alerts = []
@@ -132,6 +122,48 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
         body += "\n\nWARNING - Unexpectedly High Datapoints:\n" + "\n".join(alerts)
         
     body += "\n\nStay Safe,\nBreathe Easy Team"
+
+    if resend_api_key:
+        if not resend_from:
+            print("RESEND_FROM not configured. Skipping Resend email.")
+        else:
+            try:
+                print("DEBUG: Sending email via Resend API")
+                payload = {
+                    "from": resend_from,
+                    "to": [to_email],
+                    "subject": subject,
+                    "text": body,
+                }
+                headers = {
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                }
+                resp = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=15)
+                if resp.status_code >= 400:
+                    print(f"Resend API error: {resp.status_code} {resp.text}")
+                else:
+                    print(f"Alert email sent via Resend to {to_email}")
+                    return
+            except Exception as e:
+                import traceback
+                print(f"Failed to send via Resend: {e}")
+                traceback.print_exc()
+        # If Resend is configured but fails, fall back to SMTP when available.
+
+    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
+    smtp_username = os.environ.get('SMTP_USERNAME')
+    smtp_password = os.environ.get('SMTP_PASSWORD')
+
+    if not smtp_username or not smtp_password:
+        missing = []
+        if not smtp_username:
+            missing.append("SMTP_USERNAME")
+        if not smtp_password:
+            missing.append("SMTP_PASSWORD")
+        print(f"SMTP credentials not configured. Missing: {', '.join(missing)}. Skipping email.")
+        return
 
     msg = MIMEMultipart()
     msg['From'] = smtp_username
