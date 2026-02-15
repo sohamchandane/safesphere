@@ -71,13 +71,19 @@ def auth_ok(x_api_key: str | None) -> bool:
     return x_api_key == required
 
 def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
+    print(f"DEBUG: send_alert_email called for {to_email}")
     smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
     smtp_port = int(os.environ.get('SMTP_PORT', 587))
     smtp_username = os.environ.get('SMTP_USERNAME')
     smtp_password = os.environ.get('SMTP_PASSWORD')
 
     if not smtp_username or not smtp_password:
-        print("SMTP credentials not configured. Skipping email.")
+        missing = []
+        if not smtp_username:
+            missing.append("SMTP_USERNAME")
+        if not smtp_password:
+            missing.append("SMTP_PASSWORD")
+        print(f"SMTP credentials not configured. Missing: {', '.join(missing)}. Skipping email.")
         return
 
     # Check for unusually high values
@@ -169,6 +175,25 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
         import traceback
         print(f"Failed to send email: {e}")
         traceback.print_exc()
+
+
+class EmailTestRequest(BaseModel):
+    email: str
+    username: str | None = None
+
+
+@app.post('/email-test')
+def email_test(req: EmailTestRequest):
+    """Trigger a single email to validate SMTP configuration."""
+    print(f"DEBUG: /email-test requested for {req.email}")
+    features = {
+        'latitude': 'N/A',
+        'longitude': 'N/A',
+        'heart_rate': 'N/A',
+        'temperature': 'N/A',
+    }
+    send_alert_email(req.email, req.username or "User", 0.66, features)
+    return {"ok": True}
 
 
 @app.post('/predict')
