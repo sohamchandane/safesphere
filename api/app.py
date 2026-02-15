@@ -11,11 +11,16 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from dotenv import load_dotenv
+import sys
+
+print("DEBUG: Starting app.py import", file=sys.stderr, flush=True)
 
 # Load environment variables from the root .env file
 # load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+print("DEBUG: Creating FastAPI app", file=sys.stderr, flush=True)
 app = FastAPI(title="Asthma Risk Prediction API")
+print("DEBUG: FastAPI app created", file=sys.stderr, flush=True)
 
 app.add_middleware(
     CORSMiddleware,
