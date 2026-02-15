@@ -229,7 +229,7 @@ def email_test(req: EmailTestRequest):
 
 
 @app.post('/predict')
-def predict(req: PredictRequest, request: Request, background_tasks: BackgroundTasks, x_api_key: str | None = Header(None)):
+def predict(req: PredictRequest, request: Request, x_api_key: str | None = Header(None)):
     if not auth_ok(x_api_key):
         raise HTTPException(status_code=401, detail='Invalid API key')
 
@@ -309,13 +309,10 @@ def predict(req: PredictRequest, request: Request, background_tasks: BackgroundT
         # don't fail prediction because echoing failed
         pass
 
-    # Send email alert in background
+    # Send email alert synchronously (blocking) to ensure it runs
     if req.email:
-        print(f"DEBUG: Scheduling email to {req.email} (Risk Prob: {proba:.2f})")
-        # Add lat/long/timestamp to features if not present, for email body
-        # They might be in req.features but might be named differently
-        # Use what we have
-        background_tasks.add_task(send_alert_email, req.email, req.username or "User", proba, req.features)
+        print(f"DEBUG: Sending email to {req.email} (Risk Prob: {proba:.2f})")
+        send_alert_email(req.email, req.username or "User", proba, req.features)
     else:
         print("DEBUG: Request received but no email address provided in payload.")
 
