@@ -57,18 +57,31 @@ cd ..
 ```
 
 ### 4. Environment Configuration
-Create a `.env` file in the root directory (same level as `package.json`) with the following variables:
 
+#### Frontend (.env)
+Create a `.env` file in the root directory with:
 ```env
-# Supabase Configuration
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
-
-# External APIs
 VITE_OPENWEATHER_API_KEY=your_openweather_api_key
+VITE_PRED_API_URL=http://localhost:8000
+```
 
-# Prediction API (Local Backend)
-VITE_PRED_API_URL=http://localhost:8000/predict
+#### Backend (.env in `api/` folder)
+Create a `.env` file in the `api` folder with:
+```env
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+PRED_API_KEY=optional_api_key_for_predictions
+
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+
+RESEND_API_KEY=optional_resend_api_key
+RESEND_FROM=noreply@example.com
 ```
 
 ## Running the Application
@@ -92,16 +105,97 @@ The application will be accessible at `http://localhost:8080`.
 
 ## Project Structure
 
-- `src/`: Frontend React application.
-  - `components/`: UI components (Dashboard, RiskPrediction, etc.).
-  - `pages/`: Main views (Auth, Dashboard, Register).
-  - `integrations/supabase/`: Database connection and types.
-- `api/`: Python backend for ML predictions.
-  - `app.py`: FastAPI application entry point.
-  - `model/`: Contains the trained `bagging_model.joblib`.
-- `public/`: Static assets.
+- `src/`: Frontend React application
+  - `components/`: Reusable UI components
+  - `pages/`: Route pages (Auth, Dashboard, Register, etc.)
+  - `integrations/supabase/`: Supabase client and types
+- `api/`: Python FastAPI backend
+  - `app.py`: Main API application with prediction, registration endpoints
+  - `model/`: Pre-trained ML model
+- `public/`: Static assets and model backup
+- `supabase/`: Database migrations and configuration
+
+## API Endpoints
+
+### `/predict` (POST)
+Predicts asthma attack risk based on environmental and health features.
+
+**Request:**
+```json
+{
+  "features": {
+    "temperature": 25.5,
+    "humidity": 60,
+    "pm2_5": 45,
+    "pm10": 70,
+    "o3": 85,
+    "no2": 30,
+    "so2": 15,
+    "co": 2.5,
+    "heart_rate": 72,
+    "latitude": 19.0760,
+    "longitude": 72.8777
+  },
+  "email": "user@example.com",
+  "username": "johndoe"
+}
+```
+
+**Response:**
+```json
+{
+  "probability": 0.68,
+  "risk_class": 1
+}
+```
+
+Headers:
+- `x-api-key` (optional): API key if `PRED_API_KEY` is configured
+- `x-echo-payload` (optional): Set to `1` or `true` to echo received data
+
+### `/register` (POST)
+Register a new user with medical history.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "secure_password",
+  "username": "johndoe",
+  "dob": "1990-01-15",
+  "gender": "Male",
+  "phone_number": "+91-9876543210",
+  "diagnosis_status": true,
+  "diagnosis_date": "2020-05-10",
+  "known_triggers": ["pollen", "dust"],
+  "attack_history": [],
+  "current_symptoms": [],
+  "respiratory_issues": ["asthma"],
+  "allergies": ["pollen"],
+  "smoking_status": "never",
+  "family_history": true,
+  "chronic_conditions": []
+}
+```
+
+### `/email-test` (POST)
+Send a test email to validate SMTP configuration.
+
+**Request:**
+```json
+{
+  "email": "test@example.com",
+  "username": "testuser"
+}
+```
 
 ## Troubleshooting
 
-- **Model Loading Error**: If the API warns about "No model artifact found", ensure `bagging_model.joblib` exists in `api/model/` or `public/`.
-- **CORS Issues**: The backend is configured to allow all origins (`*`). If you change ports or deployment method, verify the CORS middleware in `api/app.py`.
+- **Model Loading Error**: Ensure `bagging_model.joblib` exists in `api/model/` or `public/`
+- **CORS Issues**: Backend allows all origins by default. Adjust in `api/app.py` if needed
+- **Database Connection**: Verify Supabase credentials in environment variables
+- **Email Not Sending**: Check SMTP credentials or Resend API key configuration
+
+## License
+
+This project is open source. See LICENSE file for details.

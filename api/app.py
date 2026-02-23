@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -7,20 +7,12 @@ import numpy as np
 import pandas as pd
 import smtplib
 import requests
+import traceback
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-from dotenv import load_dotenv
-import sys
 
-print("DEBUG: Starting app.py import", file=sys.stderr, flush=True)
-
-# Load environment variables from the root .env file
-# load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-
-print("DEBUG: Creating FastAPI app", file=sys.stderr, flush=True)
 app = FastAPI(title="Asthma Risk Prediction API")
-print("DEBUG: FastAPI app created", file=sys.stderr, flush=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,24 +30,15 @@ MODEL_PATHS = [
 
 artifact = None
 for p in MODEL_PATHS:
-    try:
-        if os.path.exists(p):
+    if os.path.exists(p):
+        try:
             artifact = joblib.load(p)
-            print(f"Loaded model from {p}")
             break
-    except Exception as e:
-        print(f"Could not load model from {p}: {e}")
+        except Exception as e:
+            print(f"Error loading model from {p}: {e}")
 
 if artifact is None:
-    print("WARNING: No model artifact found. /predict will return 500 until the model is available.")
-else:
-    try:
-        fn = artifact.get('feature_names') if isinstance(artifact, dict) else None
-        print(f"Model feature_names: {fn}")
-    except Exception as e:
-        print(f"Could not read feature_names from artifact: {e}")
-
-# artifact expected to be { 'pipeline': Pipeline, 'feature_names': [...] }
+    print("WARNING: No model artifact found.")
 
 class PredictRequest(BaseModel):
     features: dict
@@ -71,38 +54,20 @@ def canonical_name(s: str | None) -> str:
 
 def auth_ok(x_api_key: str | None) -> bool:
     required = os.environ.get('PRED_API_KEY')
-    if not required:
-        # no key configured — allow by default (NOT recommended in production)
-        return True
-    return x_api_key == required
+    return True if not required else x_api_key == required
 
 def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
-    print(f"DEBUG: send_alert_email called for {to_email}")
     resend_api_key = os.environ.get('RESEND_API_KEY')
     resend_from = os.environ.get('RESEND_FROM')
-
-    # Check for unusually high values
-    alerts = []
-    thresholds = {
-        'pm2_5': 35,
-        'pm10': 50,
-        'o3': 100,
-        'no2': 40,
-        'so2': 20,
-        'co': 4
-    }
     
+    alerts = []
+    thresholds = {'pm2_5': 35, 'pm10': 50, 'o3': 100, 'no2': 40, 'so2': 20, 'co': 4}
     for key, limit in thresholds.items():
         val = features.get(key)
         if val is not None and isinstance(val, (int, float)) and val > limit:
             alerts.append(f"- {key.upper()}: {val} (High, > {limit})")
-
-    # Only send if risk is high or there are alerts
-    is_high_risk = prediction_prob >= 0.5
     
-    # if not is_high_risk and not alerts:
-    #     print(f"DEBUG: Email skipped. Risk is {prediction_prob:.2f} (Low) and no environmental alerts found.")
-    #     return
+    is_high_risk = prediction_prob >= 0.5
 
     subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Asthma Risk Update for {username}"
     
@@ -130,45 +95,25 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
 
     if resend_api_key:
         if not resend_from:
-            print("RESEND_FROM not configured. Skipping Resend email.")
+            print("RESEND_FROM not configured.")
         else:
             try:
-                print("DEBUG: Sending email via Resend API")
-                payload = {
-                    "from": resend_from,
-                    "to": [to_email],
-                    "subject": subject,
-                    "text": body,
-                }
-                headers = {
-                    "Authorization": f"Bearer {resend_api_key}",
-                    "Content-Type": "application/json",
-                }
+                payload = {"from": resend_from, "to": [to_email], "subject": subject, "text": body}
+                headers = {"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"}
                 resp = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=15)
-                if resp.status_code >= 400:
-                    print(f"Resend API error: {resp.status_code} {resp.text}")
-                else:
-                    print(f"Alert email sent via Resend to {to_email}")
+                if resp.status_code < 400:
                     return
             except Exception as e:
-                import traceback
-                print(f"Failed to send via Resend: {e}")
-                traceback.print_exc()
-        # If Resend is configured but fails, fall back to SMTP when available.
+                print(f"Resend failed: {e}")
 
-    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
-    smtp_port = int(os.environ.get('SMTP_PORT', 587))
     smtp_username = os.environ.get('SMTP_USERNAME')
     smtp_password = os.environ.get('SMTP_PASSWORD')
-
     if not smtp_username or not smtp_password:
-        missing = []
-        if not smtp_username:
-            missing.append("SMTP_USERNAME")
-        if not smtp_password:
-            missing.append("SMTP_PASSWORD")
-        print(f"SMTP credentials not configured. Missing: {', '.join(missing)}. Skipping email.")
+        print("SMTP credentials not configured.")
         return
+    
+    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
 
     msg = MIMEMultipart()
     msg['From'] = smtp_username
@@ -177,41 +122,17 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     msg.attach(MIMEText(body, 'plain'))
 
     try:
-        print(f"DEBUG: Attempting to connect to SMTP {smtp_server}:{smtp_port}")
-        
         if smtp_port == 465:
-            # Use SMTP_SSL for port 465 (Implicit SSL)
-            print("DEBUG: Using SMTP_SSL (Implicit SSL)")
             server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-            server.set_debuglevel(1)
-            server.ehlo()
-            
-            print(f"DEBUG: Logging in as {smtp_username}")
-            server.login(smtp_username, smtp_password)
         else:
-            # Use STARTTLS for 587 or others
-            print("DEBUG: Using SMTP + STARTTLS")
             server = smtplib.SMTP(smtp_server, smtp_port)
-            server.set_debuglevel(1)
-            server.ehlo()
-            
-            print("DEBUG: Starting TLS")
             server.starttls()
-            server.ehlo()
-            
-            print(f"DEBUG: Logging in as {smtp_username}")
-            server.login(smtp_username, smtp_password)
         
-        text = msg.as_string()
-        print(f"DEBUG: Sending mail to {to_email}")
-        server.sendmail(smtp_username, to_email, text)
-        
+        server.login(smtp_username, smtp_password)
+        server.sendmail(smtp_username, to_email, msg.as_string())
         server.quit()
-        print(f"Alert email sent to {to_email}")
     except Exception as e:
-        import traceback
-        print(f"Failed to send email: {e}")
-        traceback.print_exc()
+        print(f"Email send failed: {e}")
 
 
 class EmailTestRequest(BaseModel):
@@ -221,15 +142,8 @@ class EmailTestRequest(BaseModel):
 
 @app.post('/email-test')
 def email_test(req: EmailTestRequest):
-    """Trigger a single email to validate SMTP configuration."""
-    print(f"DEBUG: /email-test requested for {req.email}")
-    features = {
-        'latitude': 'N/A',
-        'longitude': 'N/A',
-        'heart_rate': 'N/A',
-        'temperature': 'N/A',
-    }
-    send_alert_email(req.email, req.username or "User", 0.66, features)
+    """Send test email to validate SMTP configuration."""
+    send_alert_email(req.email, req.username or "User", 0.66, {'latitude': 'N/A', 'longitude': 'N/A', 'heart_rate': 'N/A', 'temperature': 'N/A'})
     return {"ok": True}
 
 
@@ -243,53 +157,32 @@ def predict(req: PredictRequest, request: Request, x_api_key: str | None = Heade
 
     pipeline = artifact.get('pipeline') if isinstance(artifact, dict) else artifact
     feature_names = artifact.get('feature_names') if isinstance(artifact, dict) else None
-    # If the trained pipeline exposes feature_names_in_ use it as authoritative
+    
     pipeline_feature_names = None
-    try:
-        if hasattr(pipeline, 'feature_names_in_'):
-            pipeline_feature_names = list(getattr(pipeline, 'feature_names_in_'))
-    except Exception:
-        pipeline_feature_names = None
+    if hasattr(pipeline, 'feature_names_in_'):
+        pipeline_feature_names = list(getattr(pipeline, 'feature_names_in_'))
 
-    # Build input row in the order expected by feature_names when available
     cols_to_use = pipeline_feature_names or feature_names
     if cols_to_use:
-        # Build a normalized map of incoming keys for tolerant matching
         incoming_map = {canonical_name(k): k for k in req.features.keys()}
         row = []
         for f in cols_to_use:
-            # 1) exact match
             if f in req.features:
-                row.append(req.features.get(f))
-                continue
-            # 2) simple variants
-            alt_us = f.replace(' ', '_')
-            if alt_us in req.features:
-                row.append(req.features.get(alt_us))
-                continue
-            alt_sp = f.replace('_', ' ')
-            if alt_sp in req.features:
-                row.append(req.features.get(alt_sp))
-                continue
-            # 3) normalized canonical match (lower + alnum)
-            c = canonical_name(f)
-            if c in incoming_map:
-                row.append(req.features.get(incoming_map[c]))
-                continue
-            # not present
-            row.append(np.nan)
+                row.append(req.features[f])
+            elif f.replace(' ', '_') in req.features:
+                row.append(req.features[f.replace(' ', '_')])
+            elif f.replace('_', ' ') in req.features:
+                row.append(req.features[f.replace('_', ' ')])
+            elif canonical_name(f) in incoming_map:
+                row.append(req.features[incoming_map[canonical_name(f)]])
+            else:
+                row.append(np.nan)
         X = pd.DataFrame([row], columns=cols_to_use)
     else:
-        # fallback: use keys as provided
         X = pd.DataFrame([req.features])
 
-    # Ensure `user_key` is numeric — fallback to 447 when invalid to avoid conversion errors
     if 'user_key' in X.columns:
-        try:
-            X['user_key'] = pd.to_numeric(X['user_key'], errors='coerce').fillna(447)
-        except Exception:
-            # best-effort coerce; if it fails let pipeline handle it and return a sensible error
-            pass
+        X['user_key'] = pd.to_numeric(X['user_key'], errors='coerce').fillna(447)
 
     try:
         proba = pipeline.predict_proba(X)[0, 1]
@@ -297,30 +190,15 @@ def predict(req: PredictRequest, request: Request, x_api_key: str | None = Heade
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Prediction failed: {e}')
 
-    # Build response
-    resp = { 'probability': float(proba), 'risk_class': int(pred) }
-
-    # If client requested an echo, include the received features and request headers
-    try:
-        echo = request.headers.get('x-echo-payload')
-        if echo and str(echo).lower() in ('1', 'true', 'yes'):
-            # include the features and a subset of headers for inspection
-            hdrs = dict(request.headers)
-            resp['echo'] = {
-                'received_features': req.features,
-                'received_headers': hdrs,
-            }
-    except Exception:
-        # don't fail prediction because echoing failed
-        pass
-
-    # Send email alert synchronously (blocking) to ensure it runs
+    resp = {'probability': float(proba), 'risk_class': int(pred)}
+    
+    echo = request.headers.get('x-echo-payload')
+    if echo and str(echo).lower() in ('1', 'true', 'yes'):
+        resp['echo'] = {'received_features': req.features, 'received_headers': dict(request.headers)}
+    
     if req.email:
-        print(f"DEBUG: Sending email to {req.email} (Risk Prob: {proba:.2f})")
         send_alert_email(req.email, req.username or "User", proba, req.features)
-    else:
-        print("DEBUG: Request received but no email address provided in payload.")
-
+    
     return resp
 
 
@@ -351,10 +229,7 @@ class RegisterRequest(BaseModel):
 
 @app.post("/register")
 async def register(req: RegisterRequest):
-    """
-    Register a new user with profile and medical history.
-    Uses Supabase service role to bypass RLS during registration.
-    """
+    """Register user with profile and medical history using service role."""
     try:
         from supabase import create_client
         import json
@@ -372,7 +247,6 @@ async def register(req: RegisterRequest):
         # 1. Check if user already exists by email
         try:
             existing_users = supabase.auth.admin.list_users()
-            # list_users() returns a list directly, not an object with .users attribute
             user_already_exists = any(u.email == req.email for u in existing_users)
             
             if user_already_exists:
@@ -380,10 +254,8 @@ async def register(req: RegisterRequest):
         except HTTPException:
             raise
         except Exception as e:
-            # If we can't list users, try to create anyway (will fail if duplicate)
             print(f"Could not check existing users: {e}")
         
-        # 2. Sign up the user and mark email as confirmed so login works immediately
         auth_response = supabase.auth.admin.create_user({
             "email": req.email,
             "password": req.password,
