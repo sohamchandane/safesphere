@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface AttackHistoryProps {
   userId: string;
+  refreshKey?: number;
 }
 
 interface MonitoringRecord {
@@ -17,7 +18,7 @@ interface MonitoringRecord {
   prediction_confidence: number;
 }
 
-export const AttackHistory = ({ userId }: AttackHistoryProps) => {
+export const AttackHistory = ({ userId, refreshKey = 0 }: AttackHistoryProps) => {
   const [records, setRecords] = useState<MonitoringRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -28,7 +29,7 @@ export const AttackHistory = ({ userId }: AttackHistoryProps) => {
         setLoading(true);
         const { data, error } = await supabase
           .from('monitoring_data')
-          .select('*')
+          .select('id, timestamp, attack_prediction, ground_truth, heart_rate, prediction_confidence')
           .eq('user_id', userId)
           .order('timestamp', { ascending: false })
           .limit(10);
@@ -56,13 +57,22 @@ export const AttackHistory = ({ userId }: AttackHistoryProps) => {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'monitoring_data',
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          setRecords((prev) => [payload.new as MonitoringRecord, ...prev.slice(0, 9)]);
+          const row = payload.new as MonitoringRecord;
+          setRecords((prev) => {
+            if (payload.eventType === 'INSERT') {
+              return [row, ...prev.filter((r) => r.id !== row.id)].slice(0, 10);
+            }
+            if (payload.eventType === 'UPDATE') {
+              return prev.map((r) => (r.id === row.id ? { ...r, ...row } : r));
+            }
+            return prev;
+          });
         }
       )
       .subscribe();
@@ -70,7 +80,7 @@ export const AttackHistory = ({ userId }: AttackHistoryProps) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   if (loading) {
     return (
@@ -105,7 +115,31 @@ export const AttackHistory = ({ userId }: AttackHistoryProps) => {
             <p className="text-sm mt-1">Start monitoring to see your history</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 pr-4">Recorded At</th>
+                  <th className="text-left py-2 pr-4">Predicted Attack</th>
+                  <th className="text-left py-2 pr-4">Confidence</th>
+                  <th className="text-left py-2">Ground Truth</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((rec) => (
+                  <tr key={rec.id} className="border-b last:border-b-0">
+                    <td className="py-2 pr-4">{rec.timestamp ? new Date(rec.timestamp).toLocaleString() : 'N/A'}</td>
+                    <td className="py-2 pr-4">{rec.attack_prediction === null ? 'N/A' : rec.attack_prediction ? 'Yes' : 'No'}</td>
+                    <td className="py-2 pr-4">
+                      {typeof rec.prediction_confidence === 'number'
+                        ? `${Math.round(rec.prediction_confidence * 100)}%`
+                        : 'N/A'}
+                    </td>
+                    <td className="py-2">{rec.ground_truth === null ? 'NA' : rec.ground_truth ? 'Yes' : 'No'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </CardContent>

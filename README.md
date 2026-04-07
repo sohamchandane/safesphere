@@ -65,6 +65,9 @@ VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 VITE_OPENWEATHER_API_KEY=your_openweather_api_key
 VITE_PRED_API_URL=http://localhost:8000
+VITE_PRED_API_KEY=optional_api_key_for_backend
+VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES=10
+VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES=20
 ```
 
 #### Backend (.env in `api/` folder)
@@ -80,8 +83,10 @@ SMTP_PORT=587
 SMTP_USERNAME=your_email@gmail.com
 SMTP_PASSWORD=your_app_password
 
-RESEND_API_KEY=optional_resend_api_key
-RESEND_FROM=noreply@example.com
+BREVO_API_KEY=your_brevo_api_key
+BREVO_FROM_EMAIL=alerts@yourdomain.com
+BREVO_FROM_NAME=Breathe Easy
+GROUND_TRUTH_REMINDER_DELAY_MINUTES=20
 ```
 
 ## Running the Application
@@ -194,7 +199,7 @@ Send a test email to validate SMTP configuration.
 - **Model Loading Error**: Ensure `bagging_model.joblib` exists in `api/model/` or `public/`
 - **CORS Issues**: Backend allows all origins by default. Adjust in `api/app.py` if needed
 - **Database Connection**: Verify Supabase credentials in environment variables
-- **Email Not Sending**: Check SMTP credentials or Resend API key configuration
+- **Email Not Sending**: Check Brevo sender verification, `BREVO_*` variables, and SMTP fallback credentials
 
 ## License
 

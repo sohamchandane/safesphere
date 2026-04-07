@@ -10,6 +10,7 @@ import { PollenDisplay } from '@/components/dashboard/PollenDisplay';
 import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
 import { RiskPrediction } from '@/components/dashboard/RiskPrediction';
 import { AttackHistory } from '@/components/dashboard/AttackHistory';
+import { GroundTruthFollowup } from '@/components/dashboard/GroundTruthFollowup';
 
 const Dashboard = () => {
   const { user, loading, signOut } = useAuth();
@@ -17,6 +18,7 @@ const Dashboard = () => {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [heartRate, setHeartRate] = useState<number | null>(null);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -99,8 +101,15 @@ const Dashboard = () => {
             />
           )}
 
+          <GroundTruthFollowup
+            userId={user.id}
+            email={user.email ?? null}
+            username={user.user_metadata?.username || user.email?.split('@')[0] || 'User'}
+            onAnswered={() => setHistoryRefreshKey((prev) => prev + 1)}
+          />
+
           {/* Attack History */}
-          <AttackHistory userId={user.id} />
+          <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />
         </div>
       </div>
     </div>

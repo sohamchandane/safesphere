@@ -7,10 +7,9 @@ import numpy as np
 import pandas as pd
 import smtplib
 import requests
-import traceback
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 app = FastAPI(title="Asthma Risk Prediction API")
 
@@ -56,43 +55,10 @@ def auth_ok(x_api_key: str | None) -> bool:
     required = os.environ.get('PRED_API_KEY')
     return True if not required else x_api_key == required
 
-def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
+def send_plain_email(to_email: str, subject: str, body: str) -> bool:
     brevo_api_key = os.environ.get('BREVO_API_KEY')
     brevo_from_email = os.environ.get('BREVO_FROM_EMAIL')
     brevo_from_name = os.environ.get('BREVO_FROM_NAME', 'Breathe Easy')
-    
-    alerts = []
-    thresholds = {'pm2_5': 35, 'pm10': 50, 'o3': 100, 'no2': 40, 'so2': 20, 'co': 4}
-    for key, limit in thresholds.items():
-        val = features.get(key)
-        if val is not None and isinstance(val, (int, float)) and val > limit:
-            alerts.append(f"- {key.upper()}: {val} (High, > {limit})")
-    
-    is_high_risk = prediction_prob >= 0.5
-
-    subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Asthma Risk Update for {username}"
-    
-    body = f"""
-    Hello {username},
-    
-    Here is your latest asthma risk assessment.
-    
-    Prediction Risk: {int(prediction_prob * 100)}%
-    Status: {"HIGH RISK" if is_high_risk else "Low/Moderate Risk"}
-    
-    Location:
-    Lat: {features.get('latitude', 'N/A')}
-    Long: {features.get('longitude', 'N/A')}
-    Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-    
-    Heart Rate: {features.get('heart_rate', 'N/A')}
-    Temperature: {features.get('temperature', 'N/A')}
-    """
-    
-    if alerts:
-        body += "\n\nWARNING - Unexpectedly High Datapoints:\n" + "\n".join(alerts)
-        
-    body += "\n\nStay Safe,\nBreathe Easy Team"
 
     # Try Brevo API first
     if brevo_api_key and brevo_from_email:
@@ -110,7 +76,7 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
             resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
             if resp.status_code < 400:
                 print(f"Email sent via Brevo to {to_email}")
-                return
+                return True
             else:
                 error_detail = resp.text
                 print(f"Brevo API error ({resp.status_code}): {error_detail}")
@@ -122,7 +88,7 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     smtp_password = os.environ.get('SMTP_PASSWORD')
     if not smtp_username or not smtp_password:
         print("SMTP credentials not configured.")
-        return
+        return False
     
     smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
     smtp_port = int(os.environ.get('SMTP_PORT', 587))
@@ -144,8 +110,70 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
         server.sendmail(smtp_username, to_email, msg.as_string())
         server.quit()
         print(f"Email sent via SMTP to {to_email}")
+        return True
     except Exception as e:
         print(f"Email send failed: {e}")
+        return False
+
+
+def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
+    alerts = []
+    thresholds = {'pm2_5': 35, 'pm10': 50, 'o3': 100, 'no2': 40, 'so2': 20, 'co': 4}
+    for key, limit in thresholds.items():
+        val = features.get(key)
+        if val is not None and isinstance(val, (int, float)) and val > limit:
+            alerts.append(f"- {key.upper()}: {val} (High, > {limit})")
+
+    is_high_risk = prediction_prob >= 0.5
+    subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Asthma Risk Update for {username}"
+
+    body = f"""
+    Hello {username},
+
+    Here is your latest asthma risk assessment.
+
+    Prediction Risk: {int(prediction_prob * 100)}%
+    Status: {"HIGH RISK" if is_high_risk else "Low/Moderate Risk"}
+
+    Location:
+    Lat: {features.get('latitude', 'N/A')}
+    Long: {features.get('longitude', 'N/A')}
+    Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+    Heart Rate: {features.get('heart_rate', 'N/A')}
+    Temperature: {features.get('temperature', 'N/A')}
+    """
+
+    if alerts:
+        body += "\n\nWARNING - Unexpectedly High Datapoints:\n" + "\n".join(alerts)
+
+    body += "\n\nStay Safe,\nBreathe Easy Team"
+    send_plain_email(to_email, subject, body)
+
+
+def send_ground_truth_reminder_email(
+    to_email: str,
+    username: str,
+    prediction_prob: float,
+    predicted_attack: bool,
+    recorded_at: str | None,
+):
+    subject = "Follow-up needed: confirm your last asthma prediction"
+    body = f"""
+    Hello {username},
+
+    Please confirm the outcome of your latest monitoring session.
+
+    Predicted Risk: {int(prediction_prob * 100)}%
+    Predicted Attack: {"Yes" if predicted_attack else "No"}
+    Recorded At: {recorded_at or "N/A"}
+
+    Please open the app and answer whether an attack was actually triggered.
+
+    Thank you,
+    Breathe Easy Team
+    """
+    return send_plain_email(to_email, subject, body)
 
 
 class EmailTestRequest(BaseModel):
@@ -153,11 +181,120 @@ class EmailTestRequest(BaseModel):
     username: str | None = None
 
 
+class GroundTruthReminderRequest(BaseModel):
+    user_id: str
+    record_id: str
+    email: str
+    username: str | None = None
+    prediction_prob: float = 0.0
+    predicted_attack: bool = False
+    recorded_at: str | None = None
+
+
 @app.post('/email-test')
 def email_test(req: EmailTestRequest):
     """Send test email to validate SMTP configuration."""
     send_alert_email(req.email, req.username or "User", 0.66, {'latitude': 'N/A', 'longitude': 'N/A', 'heart_rate': 'N/A', 'temperature': 'N/A'})
     return {"ok": True}
+
+
+@app.post('/ground-truth/reminder')
+def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None = Header(None)):
+    if not auth_ok(x_api_key):
+        raise HTTPException(status_code=401, detail='Invalid API key')
+
+    sent = send_ground_truth_reminder_email(
+        req.email,
+        req.username or "User",
+        req.prediction_prob,
+        req.predicted_attack,
+        req.recorded_at,
+    )
+
+    # Mark reminder timestamp to avoid duplicate reminder emails on future logins.
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if sent and supabase_url and supabase_service_role_key:
+        try:
+            from supabase import create_client
+
+            supabase = create_client(supabase_url, supabase_service_role_key)
+            supabase.table("monitoring_data").update(
+                {"reminder_sent_at": datetime.utcnow().isoformat()}
+            ).eq("id", req.record_id).eq("user_id", req.user_id).is_("ground_truth", None).execute()
+        except Exception as e:
+            print(f"Failed to mark reminder_sent_at: {e}")
+
+    return {"ok": True, "sent": bool(sent)}
+
+
+@app.post('/ground-truth/reminder-sweep')
+def ground_truth_reminder_sweep(x_api_key: str | None = Header(None)):
+    """Send reminders for unanswered predictions older than configured delay.
+
+    Configure delay with env GROUND_TRUTH_REMINDER_DELAY_MINUTES (default: 20).
+    Intended for periodic invocation from Render Cron.
+    """
+    if not auth_ok(x_api_key):
+        raise HTTPException(status_code=401, detail='Invalid API key')
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not supabase_service_role_key:
+        raise HTTPException(status_code=500, detail="Supabase credentials not configured")
+
+    try:
+        from supabase import create_client
+
+        supabase = create_client(supabase_url, supabase_service_role_key)
+        delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
+        threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
+
+        # Fetch due unanswered sessions.
+        due = supabase.table("monitoring_data").select(
+            "id,user_id,timestamp,attack_prediction,prediction_confidence,ground_truth,reminder_sent_at"
+        ).is_("ground_truth", None).is_("reminder_sent_at", None).lte("timestamp", threshold_iso).order(
+            "timestamp", desc=True
+        ).execute()
+
+        rows = due.data or []
+        if not rows:
+            return {"ok": True, "sent_count": 0, "checked_count": 0}
+
+        # Keep only the latest pending record per user.
+        latest_by_user = {}
+        for row in rows:
+            uid = row.get("user_id")
+            if uid and uid not in latest_by_user:
+                latest_by_user[uid] = row
+
+        sent_count = 0
+        for uid, row in latest_by_user.items():
+            profile = supabase.table("profiles").select("email_id,username").eq("id", uid).maybe_single().execute()
+            profile_data = profile.data or {}
+            to_email = profile_data.get("email_id")
+            username = profile_data.get("username") or "User"
+            if not to_email:
+                continue
+
+            sent = send_ground_truth_reminder_email(
+                to_email=to_email,
+                username=username,
+                prediction_prob=float(row.get("prediction_confidence") or 0.0),
+                predicted_attack=bool(row.get("attack_prediction")),
+                recorded_at=row.get("timestamp"),
+            )
+
+            if sent:
+                supabase.table("monitoring_data").update(
+                    {"reminder_sent_at": datetime.now(timezone.utc).isoformat()}
+                ).eq("id", row.get("id")).eq("user_id", uid).is_("ground_truth", None).execute()
+                sent_count += 1
+
+        return {"ok": True, "sent_count": sent_count, "checked_count": len(latest_by_user)}
+    except Exception as e:
+        print(f"Reminder sweep failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post('/predict')
@@ -245,7 +382,6 @@ async def register(req: RegisterRequest):
     """Register user with profile and medical history using service role."""
     try:
         from supabase import create_client
-        import json
         
         # Get Supabase credentials from environment
         supabase_url = os.getenv("SUPABASE_URL")

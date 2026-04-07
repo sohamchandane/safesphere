@@ -1,0 +1,19 @@
+name: Reminder Sweep
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  call-reminder-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call backend reminder sweep
+        run: |
+          curl -X POST "${BACKEND_URL}/ground-truth/reminder-sweep" \
+            -H "x-api-key: ${PRED_API_KEY}" \
+            -H "Content-Type: application/json"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          PRED_API_KEY: ${{ secrets.PRED_API_KEY }}

@@ -85,6 +85,7 @@ export type Database = {
           pm2_5: number | null
           prediction_confidence: number | null
           pressure: number | null
+          reminder_sent_at: string | null
           so2: number | null
           temperature: number | null
           timestamp: string | null
@@ -111,6 +112,7 @@ export type Database = {
           pm2_5?: number | null
           prediction_confidence?: number | null
           pressure?: number | null
+          reminder_sent_at?: string | null
           so2?: number | null
           temperature?: number | null
           timestamp?: string | null
@@ -137,6 +139,7 @@ export type Database = {
           pm2_5?: number | null
           prediction_confidence?: number | null
           pressure?: number | null
+          reminder_sent_at?: string | null
           so2?: number | null
           temperature?: number | null
           timestamp?: string | null
