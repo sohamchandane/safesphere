@@ -57,8 +57,9 @@ def auth_ok(x_api_key: str | None) -> bool:
     return True if not required else x_api_key == required
 
 def send_alert_email(to_email: str, username: str, prediction_prob: float, features: dict):
-    resend_api_key = os.environ.get('RESEND_API_KEY')
-    resend_from = os.environ.get('RESEND_FROM')
+    brevo_api_key = os.environ.get('BREVO_API_KEY')
+    brevo_from_email = os.environ.get('BREVO_FROM_EMAIL')
+    brevo_from_name = os.environ.get('BREVO_FROM_NAME', 'Breathe Easy')
     
     alerts = []
     thresholds = {'pm2_5': 35, 'pm10': 50, 'o3': 100, 'no2': 40, 'so2': 20, 'co': 4}
@@ -93,19 +94,30 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
         
     body += "\n\nStay Safe,\nBreathe Easy Team"
 
-    if resend_api_key:
-        if not resend_from:
-            print("RESEND_FROM not configured.")
-        else:
-            try:
-                payload = {"from": resend_from, "to": [to_email], "subject": subject, "text": body}
-                headers = {"Authorization": f"Bearer {resend_api_key}", "Content-Type": "application/json"}
-                resp = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=15)
-                if resp.status_code < 400:
-                    return
-            except Exception as e:
-                print(f"Resend failed: {e}")
+    # Try Brevo API first
+    if brevo_api_key and brevo_from_email:
+        try:
+            payload = {
+                "sender": {"name": brevo_from_name, "email": brevo_from_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "textContent": body
+            }
+            headers = {
+                "api-key": brevo_api_key,
+                "Content-Type": "application/json"
+            }
+            resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
+            if resp.status_code < 400:
+                print(f"Email sent via Brevo to {to_email}")
+                return
+            else:
+                error_detail = resp.text
+                print(f"Brevo API error ({resp.status_code}): {error_detail}")
+        except Exception as e:
+            print(f"Brevo failed: {e}")
 
+    # Fallback to SMTP
     smtp_username = os.environ.get('SMTP_USERNAME')
     smtp_password = os.environ.get('SMTP_PASSWORD')
     if not smtp_username or not smtp_password:
@@ -131,6 +143,7 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
         server.login(smtp_username, smtp_password)
         server.sendmail(smtp_username, to_email, msg.as_string())
         server.quit()
+        print(f"Email sent via SMTP to {to_email}")
     except Exception as e:
         print(f"Email send failed: {e}")
 
