@@ -1,65 +1,47 @@
 # Breathe Easy Predict
 
-Breathe Easy Predict is an integrated asthma risk monitoring and prediction application. It combines real-time environmental data (weather, pollen, air quality) with user health metrics to predict the risk of asthma attacks using a machine learning model.
+Breathe Easy Predict is a prototype for asthma-risk monitoring and early warning. It combines live environmental signals, pollen exposure, and wearable heart-rate data to predict the likelihood of an asthma trigger day.
 
-## Features
+The current prototype includes user authentication, profile registration, location-aware environmental monitoring, heart-rate capture, risk prediction, attack-history tracking, and ground-truth follow-up reminders.
 
-- **Risk Prediction**: Uses a Bagging Classifier model to predict asthma attack risk based on environmental factors (temperature, pressure, pollutants) and user history.
-- **Real-time Monitoring**: Displays current temperature, air quality index, and individual pollutant levels (CO, NO2, O3, PM2.5, etc.).
-- **Dashboard**: User-friendly dashboard for tracking health status, environmental conditions, and attack history.
-- **User Authentication**: Secure login and registration powered by Supabase.
-- **Location-based Services**: Fetches local weather and pollution data based on user location.
-- **Pollen Data**: Tracks pollen levels (grass, tree, weed) to improve prediction accuracy.
+## Current Prototype
+
+- Landing page with clear entry paths for registration and sign-in
+- Secure authentication through Supabase
+- Registration flow with medical history capture
+- Dashboard with location access, weather, pollen, and heart-rate monitoring
+- Risk prediction powered by the deployed Bagging model artifact
+- Attack history and ground-truth reminder follow-up for feedback collection
+- Email notifications for prediction alerts and reminder nudges
 
 ## Tech Stack
 
-- **Frontend**: React, TypeScript, Vite, Tailwind CSS, Shadcn UI
-- **Backend API**: Python, FastAPI, Scikit-learn
-- **Database & Auth**: Supabase
-- **External APIs**: OpenWeatherMap
+- Frontend: React, TypeScript, Vite, Tailwind CSS, Shadcn UI
+- Backend: FastAPI, Python, Scikit-learn, Pandas, NumPy
+- Auth and database: Supabase
+- External services: OpenWeatherMap, Brevo or SMTP email delivery
 
-## Prerequisites
+## Model Summary
 
-Before you begin, ensure you have the following installed:
-- [Node.js](https://nodejs.org/) (v16 or higher)
-- [Python](https://www.python.org/) (v3.8 or higher)
-- A [Supabase](https://supabase.com/) account
-- An [OpenWeatherMap](https://openweathermap.org/) API key
+The production prototype currently loads a Bagging classifier from `api/model/bagging_model.joblib` or `public/bagging_model.joblib`. The model consumes environmental variables such as temperature, pressure, humidity, pollutants, pollen levels, and heart rate to predict daily trigger risk.
 
-## Installation & Setup
+## Setup
 
-### 1. Clone the repository
+### Prerequisites
+
+- Node.js 16 or higher
+- Python 3.8 or higher
+- Supabase project and keys
+- OpenWeatherMap API key
+
+### Frontend
+
 ```bash
-git clone https://github.com/sohamchandane/safesphere.git
-cd breathe-easy-predict
+npm ci
 ```
 
-### 2. Frontend Setup
-Navigate to the root directory and install dependencies:
-```bash
-npm install
-```
+Create a `.env` file in the repository root:
 
-### 3. Backend Setup
-Navigate to the `api` folder, set up a virtual environment, and install dependencies:
-```bash
-cd api
-python -m venv venv
-
-# Activate virtual environment:
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-
-pip install -r requirements.txt
-cd ..
-```
-
-### 4. Environment Configuration
-
-#### Frontend (.env)
-Create a `.env` file in the root directory with:
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
@@ -70,62 +52,59 @@ VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES=10
 VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES=20
 ```
 
-#### Backend (.env in `api/` folder)
-Create a `.env` file in the `api` folder with:
+### Backend
+
+```bash
+cd api
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Create `api/.env`:
+
 ```env
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
 PRED_API_KEY=optional_api_key_for_predictions
-
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-
 BREVO_API_KEY=your_brevo_api_key
 BREVO_FROM_EMAIL=alerts@yourdomain.com
 BREVO_FROM_NAME=Breathe Easy
 GROUND_TRUTH_REMINDER_DELAY_MINUTES=20
 ```
 
-## Running the Application
+## Run Locally
 
-You need to run both the Python backend and the React frontend simultaneously.
+Start the backend:
 
-**1. Start the Backend Server**
-Open a terminal, navigate to the `api` folder, and run:
 ```bash
-# Ensure your virtual environment is activated
+cd api
 uvicorn app:app --reload --port 8000
 ```
-The API serves predictions and will be available at `http://localhost:8000`.
 
-**2. Start the Frontend Development Server**
-Open a new terminal in the root directory and run:
+Start the frontend in a second terminal:
+
 ```bash
 npm run dev
 ```
-The application will be accessible at `http://localhost:8080`.
 
-## Project Structure
+The frontend runs on Vite dev server, and the API serves predictions on `http://localhost:8000`.
 
-- `src/`: Frontend React application
-  - `components/`: Reusable UI components
-  - `pages/`: Route pages (Auth, Dashboard, Register, etc.)
-  - `integrations/supabase/`: Supabase client and types
-- `api/`: Python FastAPI backend
-  - `app.py`: Main API application with prediction, registration endpoints
-  - `model/`: Pre-trained ML model
-- `public/`: Static assets and model backup
-- `supabase/`: Database migrations and configuration
+## Main User Flow
+
+1. A user registers and logs in through Supabase.
+2. The dashboard requests location permission and fetches local weather and pollen data.
+3. The user records or streams heart-rate data.
+4. The prototype combines these inputs and calls the prediction API.
+5. The risk score is shown, stored, and used to drive alert and follow-up reminders.
 
 ## API Endpoints
 
-### `/predict` (POST)
-Predicts asthma attack risk based on environmental and health features.
+### `POST /predict`
+Returns the asthma risk probability and class.
 
-**Request:**
+Request example:
+
 ```json
 {
   "features": {
@@ -138,69 +117,45 @@ Predicts asthma attack risk based on environmental and health features.
     "so2": 15,
     "co": 2.5,
     "heart_rate": 72,
-    "latitude": 19.0760,
-    "longitude": 72.8777
+    "latitude": 11.1076,
+    "longitude": 15.8777
   },
   "email": "user@example.com",
   "username": "johndoe"
 }
 ```
 
-**Response:**
-```json
-{
-  "probability": 0.68,
-  "risk_class": 1
-}
-```
+### `POST /register`
+Creates a Supabase auth user and stores the profile plus medical history.
 
-Headers:
-- `x-api-key` (optional): API key if `PRED_API_KEY` is configured
-- `x-echo-payload` (optional): Set to `1` or `true` to echo received data
+### `POST /email-test`
+Sends a test email to verify SMTP or Brevo settings.
 
-### `/register` (POST)
-Register a new user with medical history.
+### `POST /ground-truth/reminder`
+Sends a follow-up reminder for a specific prediction record.
 
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "secure_password",
-  "username": "johndoe",
-  "dob": "1990-01-15",
-  "gender": "Male",
-  "phone_number": "+91-9876543210",
-  "diagnosis_status": true,
-  "diagnosis_date": "2020-05-10",
-  "known_triggers": ["pollen", "dust"],
-  "attack_history": [],
-  "current_symptoms": [],
-  "respiratory_issues": ["asthma"],
-  "allergies": ["pollen"],
-  "smoking_status": "never",
-  "family_history": true,
-  "chronic_conditions": []
-}
-```
+### `POST /ground-truth/reminder-sweep`
+Finds unanswered monitoring records and sends reminders in batch.
 
-### `/email-test` (POST)
-Send a test email to validate SMTP configuration.
+## Project Structure
 
-**Request:**
-```json
-{
-  "email": "test@example.com",
-  "username": "testuser"
-}
-```
+- `src/`: React frontend application
+  - `pages/`: Landing, auth, register, dashboard, and fallback routes
+  - `components/dashboard/`: Location, weather, pollen, heart-rate, prediction, and history widgets
+  - `contexts/`: Authentication state
+- `api/`: FastAPI backend and model-serving logic
+  - `app.py`: Prediction, registration, and reminder endpoints
+  - `model/`: Deployed model artifact
+- `public/`: Static assets and backup model file
+- `supabase/`: Database schema and migrations
 
-## Troubleshooting
+## Notes
 
-- **Model Loading Error**: Ensure `bagging_model.joblib` exists in `api/model/` or `public/`
-- **CORS Issues**: Backend allows all origins by default. Adjust in `api/app.py` if needed
-- **Database Connection**: Verify Supabase credentials in environment variables
-- **Email Not Sending**: Check Brevo sender verification, `BREVO_*` variables, and SMTP fallback credentials
+- The prototype is optimized for recall, because missed trigger days are more costly than false alarms in this use case.
+- Web Bluetooth works best in Chromium-based browsers and requires HTTPS or localhost.
+- Location access requires browser permission.
+- If the model file is missing, the API will return a model-unavailable error until `bagging_model.joblib` is restored.
 
 ## License
 
-This project is open source. See LICENSE file for details.
+This project is open source. See the license file if present in the repository.
