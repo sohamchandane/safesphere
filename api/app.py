@@ -69,8 +69,13 @@ def auth_ok(x_api_key: str | None) -> bool:
 
 def is_missing_column_error(err: Exception, column_name: str, table_name: str) -> bool:
     msg = str(err).lower()
+    missing_column_tokens = (
+        "pgrst204",  # PostgREST schema cache error
+        "42703",     # PostgreSQL undefined_column
+        "does not exist",
+    )
     return (
-        "pgrst204" in msg
+        any(token in msg for token in missing_column_tokens)
         and column_name.lower() in msg
         and table_name.lower() in msg
     )
@@ -78,10 +83,26 @@ def is_missing_column_error(err: Exception, column_name: str, table_name: str) -
 
 def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
     """Return (email, username) with backward-compatible fallback for older schemas."""
+    def auth_email_fallback() -> str | None:
+        try:
+            auth_user_resp = supabase.auth.admin.get_user_by_id(user_id)
+            user_obj = getattr(auth_user_resp, "user", None)
+            return getattr(user_obj, "email", None)
+        except Exception as auth_e:
+            print(f"Could not fetch auth email for {user_id}: {auth_e}")
+            return None
+
     try:
         profile = supabase.table("profiles").select("email_id,username").eq("id", user_id).maybe_single().execute()
         profile_data = profile.data or {}
-        return profile_data.get("email_id"), (profile_data.get("username") or "User")
+        email_id = profile_data.get("email_id")
+        username = profile_data.get("username") or "User"
+
+        # If email_id column exists but value is null/blank, fallback to auth email.
+        if not email_id:
+            email_id = auth_email_fallback()
+
+        return email_id, username
     except Exception as e:
         if not is_missing_column_error(e, "email_id", "profiles"):
             raise
@@ -91,15 +112,7 @@ def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
     profile_data = profile.data or {}
     username = profile_data.get("username") or "User"
 
-    to_email = None
-    try:
-        auth_user_resp = supabase.auth.admin.get_user_by_id(user_id)
-        user_obj = getattr(auth_user_resp, "user", None)
-        to_email = getattr(user_obj, "email", None)
-    except Exception as auth_e:
-        print(f"Could not fetch auth email for {user_id}: {auth_e}")
-
-    return to_email, username
+    return auth_email_fallback(), username
 
 def send_plain_email(to_email: str, subject: str, body: str) -> bool:
     brevo_api_key = os.environ.get('BREVO_API_KEY')
