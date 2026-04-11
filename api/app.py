@@ -19,6 +19,10 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 app = FastAPI(title="Asthma Risk Prediction API")
 
 _reminder_worker_started = False
+_last_sweep_started_at: str | None = None
+_last_sweep_completed_at: str | None = None
+_last_sweep_result: dict | None = None
+_last_sweep_error: str | None = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -292,7 +296,7 @@ def run_ground_truth_reminder_sweep() -> dict:
 
     rows = due.data or []
     if not rows:
-        return {"ok": True, "sent_count": 0, "checked_count": 0}
+        return {"ok": True, "sent_count": 0, "checked_count": 0, "due_rows": 0, "no_email_count": 0, "send_failed_count": 0}
 
     # Keep only the latest pending record per user.
     latest_by_user = {}
@@ -302,9 +306,13 @@ def run_ground_truth_reminder_sweep() -> dict:
             latest_by_user[uid] = row
 
     sent_count = 0
+    no_email_count = 0
+    send_failed_count = 0
     for uid, row in latest_by_user.items():
         to_email, username = get_profile_contact_info(supabase, uid)
         if not to_email:
+            no_email_count += 1
+            print(f"Reminder sweep skipped user {uid}: no email found")
             continue
 
         sent = send_ground_truth_reminder_email(
@@ -320,8 +328,66 @@ def run_ground_truth_reminder_sweep() -> dict:
                 {"reminder_sent_at": datetime.now(timezone.utc).isoformat()}
             ).eq("id", row.get("id")).eq("user_id", uid).is_("ground_truth", None).execute()
             sent_count += 1
+        else:
+            send_failed_count += 1
+            print(f"Reminder sweep failed to send email to {to_email} for user {uid}")
 
-    return {"ok": True, "sent_count": sent_count, "checked_count": len(latest_by_user)}
+    return {
+        "ok": True,
+        "sent_count": sent_count,
+        "checked_count": len(latest_by_user),
+        "due_rows": len(rows),
+        "no_email_count": no_email_count,
+        "send_failed_count": send_failed_count,
+    }
+
+
+@app.get('/ground-truth/reminder-status')
+def ground_truth_reminder_status(x_api_key: str | None = Header(None)):
+    """Return reminder scheduler and delivery diagnostics."""
+    if not auth_ok(x_api_key):
+        raise HTTPException(status_code=401, detail='Invalid API key')
+
+    delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
+    interval_seconds = max(30, int(os.getenv("GROUND_TRUTH_SWEEP_INTERVAL_SECONDS", "60")))
+    enabled = os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() in ("1", "true", "yes", "on")
+
+    email_provider = {
+        "brevo_configured": bool(os.getenv("BREVO_API_KEY") and os.getenv("BREVO_FROM_EMAIL")),
+        "smtp_configured": bool(os.getenv("SMTP_USERNAME") and os.getenv("SMTP_PASSWORD")),
+    }
+
+    due_preview = None
+    try:
+        from supabase import create_client
+
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if supabase_url and supabase_service_role_key:
+            supabase = create_client(supabase_url, supabase_service_role_key)
+            threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
+            due = supabase.table("monitoring_data").select("id", count="exact").is_("ground_truth", None).is_("reminder_sent_at", None).lte("timestamp", threshold_iso).execute()
+            due_preview = {"due_count": getattr(due, "count", None)}
+    except Exception as e:
+        due_preview = {"error": str(e)}
+
+    return {
+        "ok": True,
+        "scheduler": {
+            "enabled": enabled,
+            "worker_started": _reminder_worker_started,
+            "delay_minutes": delay_minutes,
+            "interval_seconds": interval_seconds,
+        },
+        "last_sweep": {
+            "started_at": _last_sweep_started_at,
+            "completed_at": _last_sweep_completed_at,
+            "result": _last_sweep_result,
+            "error": _last_sweep_error,
+        },
+        "email_provider": email_provider,
+        "due_preview": due_preview,
+    }
 
 
 @app.post('/ground-truth/reminder-sweep')
@@ -342,14 +408,23 @@ def ground_truth_reminder_sweep(x_api_key: str | None = Header(None)):
 
 
 def _background_reminder_sweep_worker():
+    global _last_sweep_started_at, _last_sweep_completed_at, _last_sweep_result, _last_sweep_error
     interval_seconds = max(30, int(os.getenv("GROUND_TRUTH_SWEEP_INTERVAL_SECONDS", "60")))
     while True:
         try:
             if os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() in ("1", "true", "yes", "on"):
+                _last_sweep_started_at = datetime.now(timezone.utc).isoformat()
                 result = run_ground_truth_reminder_sweep()
+                _last_sweep_result = result
+                _last_sweep_error = None
+                _last_sweep_completed_at = datetime.now(timezone.utc).isoformat()
                 if result.get("sent_count", 0):
                     print(f"Background reminder sweep sent {result.get('sent_count')} emails")
+                else:
+                    print(f"Background reminder sweep checked {result.get('checked_count', 0)} users, sent 0")
         except Exception as e:
+            _last_sweep_error = str(e)
+            _last_sweep_completed_at = datetime.now(timezone.utc).isoformat()
             print(f"Background reminder sweep error: {e}")
         time.sleep(interval_seconds)
 
