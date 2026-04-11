@@ -380,6 +380,7 @@ class RegisterRequest(BaseModel):
 @app.post("/register")
 async def register(req: RegisterRequest):
     """Register user with profile and medical history using service role."""
+    created_user_id = None
     try:
         from supabase import create_client
         
@@ -392,11 +393,22 @@ async def register(req: RegisterRequest):
         
         # Create Supabase client with service role (bypasses RLS)
         supabase = create_client(supabase_url, supabase_service_role_key)
+
+        normalized_email = (req.email or "").strip().lower()
+        normalized_username = (req.username or "").strip()
+        if not normalized_email or not normalized_username:
+            raise HTTPException(status_code=400, detail="Email and username are required")
+
+        # 1. Check if username is already taken before creating auth user.
+        existing_profile = supabase.table("profiles").select("id").eq("username", normalized_username).limit(1).execute()
+        if existing_profile.data:
+            raise HTTPException(status_code=409, detail="Username is already taken")
         
-        # 1. Check if user already exists by email
+        # 2. Best-effort check if user already exists by email.
         try:
-            existing_users = supabase.auth.admin.list_users()
-            user_already_exists = any(u.email == req.email for u in existing_users)
+            existing_users_resp = supabase.auth.admin.list_users()
+            users = getattr(existing_users_resp, "users", None) or []
+            user_already_exists = any((getattr(u, "email", "") or "").lower() == normalized_email for u in users)
             
             if user_already_exists:
                 raise HTTPException(status_code=409, detail="User with this email already exists")
@@ -406,22 +418,23 @@ async def register(req: RegisterRequest):
             print(f"Could not check existing users: {e}")
         
         auth_response = supabase.auth.admin.create_user({
-            "email": req.email,
+            "email": normalized_email,
             "password": req.password,
             "email_confirm": True,
         })
         
-        user_id = auth_response.user.id
+        user_id = str(auth_response.user.id)
+        created_user_id = user_id
         
         # 3. Upsert profile (using service role, so RLS doesn't apply)
         # Upsert allows atomic update-or-insert, so retries won't fail
         profile_data = {
             "id": user_id,
-            "username": req.username,
+            "username": normalized_username,
             "dob": req.dob,
             "gender": req.gender,
             "phone_number": req.phone_number,
-            "email_id": req.email_id or req.email,
+            "email_id": req.email_id or normalized_email,
         }
         
         supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
@@ -456,5 +469,24 @@ async def register(req: RegisterRequest):
         # Re-raise HTTP exceptions (like 409 conflict)
         raise
     except Exception as e:
+        error_text = str(e)
+
+        # If auth user was created but profile/medical write failed, clean it up
+        # so retry doesn't hit a false "user already exists" state.
+        if created_user_id:
+            try:
+                from supabase import create_client
+
+                cleanup_client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+                cleanup_client.auth.admin.delete_user(created_user_id)
+                print(f"Rolled back auth user after registration failure: {created_user_id}")
+            except Exception as cleanup_error:
+                print(f"Failed to rollback created auth user {created_user_id}: {cleanup_error}")
+
         print(f"Registration error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        lowered = error_text.lower()
+        if "already" in lowered and ("registered" in lowered or "exists" in lowered):
+            raise HTTPException(status_code=409, detail="User with this email already exists")
+        if "profiles_username_key" in lowered or "username" in lowered and "duplicate" in lowered:
+            raise HTTPException(status_code=409, detail="Username is already taken")
+        raise HTTPException(status_code=400, detail=error_text)

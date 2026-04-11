@@ -1,6 +1,6 @@
-# Breathe Easy Predict
+# SafeSphere
 
-Breathe Easy Predict is a prototype for asthma-risk monitoring and early warning. It combines live environmental signals, pollen exposure, and wearable heart-rate data to predict the likelihood of an asthma trigger day.
+SafeSphere is a prototype for asthma-risk monitoring and early warning. It combines live environmental signals, pollen exposure, and wearable heart-rate data to predict the likelihood of an asthma trigger day.
 
 The current prototype includes user authentication, profile registration, location-aware environmental monitoring, heart-rate capture, risk prediction, attack-history tracking, and ground-truth follow-up reminders.
 
@@ -46,7 +46,7 @@ Create a `.env` file in the repository root:
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 VITE_OPENWEATHER_API_KEY=your_openweather_api_key
-VITE_PRED_API_URL=http://localhost:8000
+VITE_PRED_API_URL=http://localhost:8000/predict
 VITE_PRED_API_KEY=optional_api_key_for_backend
 VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES=10
 VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES=20
@@ -69,7 +69,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 PRED_API_KEY=optional_api_key_for_predictions
 BREVO_API_KEY=your_brevo_api_key
 BREVO_FROM_EMAIL=alerts@yourdomain.com
-BREVO_FROM_NAME=Breathe Easy
+BREVO_FROM_NAME=SafeSphere
 GROUND_TRUTH_REMINDER_DELAY_MINUTES=20
 ```
 
@@ -92,11 +92,17 @@ The frontend runs on Vite dev server, and the API serves predictions on `http://
 
 ## Main User Flow
 
-1. A user registers and logs in through Supabase.
+1. A user registers through the backend `/register` endpoint and then logs in through Supabase Auth.
 2. The dashboard requests location permission and fetches local weather and pollen data.
 3. The user records or streams heart-rate data.
 4. The prototype combines these inputs and calls the prediction API.
 5. The risk score is shown, stored, and used to drive alert and follow-up reminders.
+
+## Authentication
+
+- Sign in and session management are powered by Supabase Authentication.
+- User registration captures both account details and medical history.
+- If a registration conflict occurs (for example, existing email or username), the API returns a clear error.
 
 ## API Endpoints
 
@@ -127,6 +133,7 @@ Request example:
 
 ### `POST /register`
 Creates a Supabase auth user and stores the profile plus medical history.
+Returns `409` for existing email or username conflicts.
 
 ### `POST /email-test`
 Sends a test email to verify SMTP or Brevo settings.
