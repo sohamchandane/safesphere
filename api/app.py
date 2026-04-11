@@ -62,6 +62,41 @@ def auth_ok(x_api_key: str | None) -> bool:
     required = os.environ.get('PRED_API_KEY')
     return True if not required else x_api_key == required
 
+
+def is_missing_column_error(err: Exception, column_name: str, table_name: str) -> bool:
+    msg = str(err).lower()
+    return (
+        "pgrst204" in msg
+        and column_name.lower() in msg
+        and table_name.lower() in msg
+    )
+
+
+def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
+    """Return (email, username) with backward-compatible fallback for older schemas."""
+    try:
+        profile = supabase.table("profiles").select("email_id,username").eq("id", user_id).maybe_single().execute()
+        profile_data = profile.data or {}
+        return profile_data.get("email_id"), (profile_data.get("username") or "User")
+    except Exception as e:
+        if not is_missing_column_error(e, "email_id", "profiles"):
+            raise
+
+    # Fallback path when profiles.email_id does not exist.
+    profile = supabase.table("profiles").select("username").eq("id", user_id).maybe_single().execute()
+    profile_data = profile.data or {}
+    username = profile_data.get("username") or "User"
+
+    to_email = None
+    try:
+        auth_user_resp = supabase.auth.admin.get_user_by_id(user_id)
+        user_obj = getattr(auth_user_resp, "user", None)
+        to_email = getattr(user_obj, "email", None)
+    except Exception as auth_e:
+        print(f"Could not fetch auth email for {user_id}: {auth_e}")
+
+    return to_email, username
+
 def send_plain_email(to_email: str, subject: str, body: str) -> bool:
     brevo_api_key = os.environ.get('BREVO_API_KEY')
     brevo_from_email = os.environ.get('BREVO_FROM_EMAIL')
@@ -268,10 +303,7 @@ def run_ground_truth_reminder_sweep() -> dict:
 
     sent_count = 0
     for uid, row in latest_by_user.items():
-        profile = supabase.table("profiles").select("email_id,username").eq("id", uid).maybe_single().execute()
-        profile_data = profile.data or {}
-        to_email = profile_data.get("email_id")
-        username = profile_data.get("username") or "User"
+        to_email, username = get_profile_contact_info(supabase, uid)
         if not to_email:
             continue
 
@@ -477,8 +509,17 @@ async def register(req: RegisterRequest):
             "phone_number": req.phone_number,
             "email_id": req.email_id or normalized_email,
         }
-        
-        supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
+
+        try:
+            supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
+        except Exception as profile_error:
+            # Backward compatibility for deployments where profiles.email_id column isn't present yet.
+            if is_missing_column_error(profile_error, "email_id", "profiles"):
+                fallback_profile_data = {k: v for k, v in profile_data.items() if k != "email_id"}
+                supabase.table("profiles").upsert(fallback_profile_data, on_conflict="id").execute()
+                print("profiles.email_id not found; retried registration upsert without email_id")
+            else:
+                raise
         
         # 4. Upsert medical history
         # Convert attack_history to proper JSONB format (array or object both work)
