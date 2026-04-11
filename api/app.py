@@ -5,13 +5,20 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
+import threading
+import time
 import smtplib
 import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 app = FastAPI(title="Asthma Risk Prediction API")
+
+_reminder_worker_started = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -228,6 +235,63 @@ def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None
     return {"ok": True, "sent": bool(sent)}
 
 
+def run_ground_truth_reminder_sweep() -> dict:
+    """Send due reminders and mark rows as notified."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not supabase_service_role_key:
+        raise RuntimeError("Supabase credentials not configured")
+
+    from supabase import create_client
+
+    supabase = create_client(supabase_url, supabase_service_role_key)
+    delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
+    threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
+
+    # Fetch due unanswered sessions.
+    due = supabase.table("monitoring_data").select(
+        "id,user_id,timestamp,attack_prediction,prediction_confidence,ground_truth,reminder_sent_at"
+    ).is_("ground_truth", None).is_("reminder_sent_at", None).lte("timestamp", threshold_iso).order(
+        "timestamp", desc=True
+    ).execute()
+
+    rows = due.data or []
+    if not rows:
+        return {"ok": True, "sent_count": 0, "checked_count": 0}
+
+    # Keep only the latest pending record per user.
+    latest_by_user = {}
+    for row in rows:
+        uid = row.get("user_id")
+        if uid and uid not in latest_by_user:
+            latest_by_user[uid] = row
+
+    sent_count = 0
+    for uid, row in latest_by_user.items():
+        profile = supabase.table("profiles").select("email_id,username").eq("id", uid).maybe_single().execute()
+        profile_data = profile.data or {}
+        to_email = profile_data.get("email_id")
+        username = profile_data.get("username") or "User"
+        if not to_email:
+            continue
+
+        sent = send_ground_truth_reminder_email(
+            to_email=to_email,
+            username=username,
+            prediction_prob=float(row.get("prediction_confidence") or 0.0),
+            predicted_attack=bool(row.get("attack_prediction")),
+            recorded_at=row.get("timestamp"),
+        )
+
+        if sent:
+            supabase.table("monitoring_data").update(
+                {"reminder_sent_at": datetime.now(timezone.utc).isoformat()}
+            ).eq("id", row.get("id")).eq("user_id", uid).is_("ground_truth", None).execute()
+            sent_count += 1
+
+    return {"ok": True, "sent_count": sent_count, "checked_count": len(latest_by_user)}
+
+
 @app.post('/ground-truth/reminder-sweep')
 def ground_truth_reminder_sweep(x_api_key: str | None = Header(None)):
     """Send reminders for unanswered predictions older than configured delay.
@@ -238,63 +302,40 @@ def ground_truth_reminder_sweep(x_api_key: str | None = Header(None)):
     if not auth_ok(x_api_key):
         raise HTTPException(status_code=401, detail='Invalid API key')
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not supabase_service_role_key:
-        raise HTTPException(status_code=500, detail="Supabase credentials not configured")
-
     try:
-        from supabase import create_client
-
-        supabase = create_client(supabase_url, supabase_service_role_key)
-        delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
-        threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
-
-        # Fetch due unanswered sessions.
-        due = supabase.table("monitoring_data").select(
-            "id,user_id,timestamp,attack_prediction,prediction_confidence,ground_truth,reminder_sent_at"
-        ).is_("ground_truth", None).is_("reminder_sent_at", None).lte("timestamp", threshold_iso).order(
-            "timestamp", desc=True
-        ).execute()
-
-        rows = due.data or []
-        if not rows:
-            return {"ok": True, "sent_count": 0, "checked_count": 0}
-
-        # Keep only the latest pending record per user.
-        latest_by_user = {}
-        for row in rows:
-            uid = row.get("user_id")
-            if uid and uid not in latest_by_user:
-                latest_by_user[uid] = row
-
-        sent_count = 0
-        for uid, row in latest_by_user.items():
-            profile = supabase.table("profiles").select("email_id,username").eq("id", uid).maybe_single().execute()
-            profile_data = profile.data or {}
-            to_email = profile_data.get("email_id")
-            username = profile_data.get("username") or "User"
-            if not to_email:
-                continue
-
-            sent = send_ground_truth_reminder_email(
-                to_email=to_email,
-                username=username,
-                prediction_prob=float(row.get("prediction_confidence") or 0.0),
-                predicted_attack=bool(row.get("attack_prediction")),
-                recorded_at=row.get("timestamp"),
-            )
-
-            if sent:
-                supabase.table("monitoring_data").update(
-                    {"reminder_sent_at": datetime.now(timezone.utc).isoformat()}
-                ).eq("id", row.get("id")).eq("user_id", uid).is_("ground_truth", None).execute()
-                sent_count += 1
-
-        return {"ok": True, "sent_count": sent_count, "checked_count": len(latest_by_user)}
+        return run_ground_truth_reminder_sweep()
     except Exception as e:
         print(f"Reminder sweep failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _background_reminder_sweep_worker():
+    interval_seconds = max(30, int(os.getenv("GROUND_TRUTH_SWEEP_INTERVAL_SECONDS", "60")))
+    while True:
+        try:
+            if os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() in ("1", "true", "yes", "on"):
+                result = run_ground_truth_reminder_sweep()
+                if result.get("sent_count", 0):
+                    print(f"Background reminder sweep sent {result.get('sent_count')} emails")
+        except Exception as e:
+            print(f"Background reminder sweep error: {e}")
+        time.sleep(interval_seconds)
+
+
+@app.on_event("startup")
+def start_background_reminder_sweep():
+    global _reminder_worker_started
+    if _reminder_worker_started:
+        return
+
+    if os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() not in ("1", "true", "yes", "on"):
+        print("Background reminder sweep disabled by ENABLE_BACKGROUND_REMINDER_SWEEP")
+        return
+
+    worker = threading.Thread(target=_background_reminder_sweep_worker, daemon=True, name="ground-truth-reminder-sweep")
+    worker.start()
+    _reminder_worker_started = True
+    print("Background reminder sweep worker started")
 
 
 @app.post('/predict')

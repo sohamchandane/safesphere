@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -67,13 +67,50 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
   const [loading, setLoading] = useState(true);
   const [answering, setAnswering] = useState(false);
   const [reminderBusy, setReminderBusy] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const fetchLatest = useCallback(async (showLoader = false) => {
+    try {
+      if (showLoader) setLoading(true);
+      let { data, error } = await supabase
+        .from('monitoring_data')
+        .select('id, user_id, timestamp, attack_prediction, prediction_confidence, ground_truth, reminder_sent_at, latitude, longitude')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Backward-compatible fallback if reminder_sent_at column is not yet migrated.
+      if (error && String(error.message || '').toLowerCase().includes('reminder_sent_at')) {
+        const fallback = await supabase
+          .from('monitoring_data')
+          .select('id, user_id, timestamp, attack_prediction, prediction_confidence, ground_truth, latitude, longitude')
+          .eq('user_id', userId)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        data = fallback.data
+          ? ({ ...fallback.data, reminder_sent_at: null } as any)
+          : null;
+        error = fallback.error;
+      }
+
+      if (error) throw error;
+      setRecord((data as MonitoringRecord) || null);
+    } catch (error: any) {
+      console.error('Ground truth fetch error:', error);
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, [userId]);
 
   const elapsedMs = useMemo(() => {
     if (!record?.timestamp) return 0;
     const ts = Date.parse(record.timestamp);
     if (Number.isNaN(ts)) return 0;
-    return Date.now() - ts;
-  }, [record?.timestamp]);
+    return nowMs - ts;
+  }, [nowMs, record?.timestamp]);
 
   const promptEligible = !!record && record.ground_truth === null && elapsedMs >= PROMPT_DELAY_MINUTES * 60 * 1000;
   const reminderEligible =
@@ -83,44 +120,21 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
     elapsedMs >= REMINDER_DELAY_MINUTES * 60 * 1000;
 
   useEffect(() => {
-    const fetchLatest = async () => {
-      try {
-        setLoading(true);
-        let { data, error } = await supabase
-          .from('monitoring_data')
-          .select('id, user_id, timestamp, attack_prediction, prediction_confidence, ground_truth, reminder_sent_at, latitude, longitude')
-          .eq('user_id', userId)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    fetchLatest(true);
 
-        // Backward-compatible fallback if reminder_sent_at column is not yet migrated.
-        if (error && String(error.message || '').toLowerCase().includes('reminder_sent_at')) {
-          const fallback = await supabase
-            .from('monitoring_data')
-            .select('id, user_id, timestamp, attack_prediction, prediction_confidence, ground_truth, latitude, longitude')
-            .eq('user_id', userId)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+    // Keep latest record fresh while user stays logged in.
+    const refreshId = window.setInterval(() => {
+      fetchLatest(false);
+    }, 60_000);
 
-          data = fallback.data
-            ? ({ ...fallback.data, reminder_sent_at: null } as any)
-            : null;
-          error = fallback.error;
-        }
+    return () => window.clearInterval(refreshId);
+  }, [fetchLatest]);
 
-        if (error) throw error;
-        setRecord((data as MonitoringRecord) || null);
-      } catch (error: any) {
-        console.error('Ground truth fetch error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLatest();
-  }, [userId]);
+  useEffect(() => {
+    // Re-evaluate prompt/reminder timing without requiring relogin or reload.
+    const tickId = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(tickId);
+  }, []);
 
   useEffect(() => {
     const sendReminder = async () => {
