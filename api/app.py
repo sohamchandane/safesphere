@@ -8,10 +8,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import threading
 import time
-import smtplib
 import requests
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone, timedelta
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -81,6 +78,12 @@ def is_missing_column_error(err: Exception, column_name: str, table_name: str) -
     )
 
 
+def safe_response_data(resp, default):
+    """Safely read Supabase response .data when the SDK returns None-like objects."""
+    data = getattr(resp, "data", None) if resp is not None else None
+    return default if data is None else data
+
+
 def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
     """Return (email, username) with backward-compatible fallback for older schemas."""
     def auth_email_fallback() -> str | None:
@@ -94,7 +97,7 @@ def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
 
     try:
         profile = supabase.table("profiles").select("email_id,username").eq("id", user_id).maybe_single().execute()
-        profile_data = profile.data or {}
+        profile_data = safe_response_data(profile, {})
         email_id = profile_data.get("email_id")
         username = profile_data.get("username") or "User"
 
@@ -109,7 +112,7 @@ def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
 
     # Fallback path when profiles.email_id does not exist.
     profile = supabase.table("profiles").select("username").eq("id", user_id).maybe_single().execute()
-    profile_data = profile.data or {}
+    profile_data = safe_response_data(profile, {})
     username = profile_data.get("username") or "User"
 
     return auth_email_fallback(), username
@@ -119,59 +122,29 @@ def send_plain_email(to_email: str, subject: str, body: str) -> bool:
     brevo_from_email = os.environ.get('BREVO_FROM_EMAIL')
     brevo_from_name = os.environ.get('BREVO_FROM_NAME', 'Breathe Easy')
 
-    # Try Brevo API first
-    if brevo_api_key and brevo_from_email:
-        try:
-            payload = {
-                "sender": {"name": brevo_from_name, "email": brevo_from_email},
-                "to": [{"email": to_email}],
-                "subject": subject,
-                "textContent": body
-            }
-            headers = {
-                "api-key": brevo_api_key,
-                "Content-Type": "application/json"
-            }
-            resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
-            if resp.status_code < 400:
-                print(f"Email sent via Brevo to {to_email}")
-                return True
-            else:
-                error_detail = resp.text
-                print(f"Brevo API error ({resp.status_code}): {error_detail}")
-        except Exception as e:
-            print(f"Brevo failed: {e}")
-
-    # Fallback to SMTP
-    smtp_username = os.environ.get('SMTP_USERNAME')
-    smtp_password = os.environ.get('SMTP_PASSWORD')
-    if not smtp_username or not smtp_password:
-        print("SMTP credentials not configured.")
+    if not brevo_api_key or not brevo_from_email:
+        print("Brevo credentials not configured.")
         return False
-    
-    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
-    smtp_port = int(os.environ.get('SMTP_PORT', 587))
-
-    msg = MIMEMultipart()
-    msg['From'] = smtp_username
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
 
     try:
-        if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-        else:
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            server.starttls()
-        
-        server.login(smtp_username, smtp_password)
-        server.sendmail(smtp_username, to_email, msg.as_string())
-        server.quit()
-        print(f"Email sent via SMTP to {to_email}")
+        payload = {
+            "sender": {"name": brevo_from_name, "email": brevo_from_email},
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "textContent": body,
+        }
+        headers = {
+            "api-key": brevo_api_key,
+            "Content-Type": "application/json",
+        }
+        resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
+        if resp.status_code >= 400:
+            print(f"Brevo API error ({resp.status_code}): {resp.text}")
+            return False
+        print(f"Email sent via Brevo to {to_email}")
         return True
     except Exception as e:
-        print(f"Email send failed: {e}")
+        print(f"Brevo failed: {e}")
         return False
 
 
@@ -252,7 +225,7 @@ class GroundTruthReminderRequest(BaseModel):
 
 @app.post('/email-test')
 def email_test(req: EmailTestRequest):
-    """Send test email to validate SMTP configuration."""
+    """Send test email to validate email provider configuration."""
     send_alert_email(req.email, req.username or "User", 0.66, {'latitude': 'N/A', 'longitude': 'N/A', 'heart_rate': 'N/A', 'temperature': 'N/A'})
     return {"ok": True}
 
@@ -307,7 +280,7 @@ def run_ground_truth_reminder_sweep() -> dict:
         "timestamp", desc=True
     ).execute()
 
-    rows = due.data or []
+    rows = safe_response_data(due, [])
     if not rows:
         return {"ok": True, "sent_count": 0, "checked_count": 0, "due_rows": 0, "no_email_count": 0, "send_failed_count": 0}
 
@@ -367,7 +340,6 @@ def ground_truth_reminder_status(x_api_key: str | None = Header(None)):
 
     email_provider = {
         "brevo_configured": bool(os.getenv("BREVO_API_KEY") and os.getenv("BREVO_FROM_EMAIL")),
-        "smtp_configured": bool(os.getenv("SMTP_USERNAME") and os.getenv("SMTP_PASSWORD")),
     }
 
     due_preview = None
@@ -562,7 +534,7 @@ async def register(req: RegisterRequest):
 
         # 1. Check if username is already taken before creating auth user.
         existing_profile = supabase.table("profiles").select("id").eq("username", normalized_username).limit(1).execute()
-        if existing_profile.data:
+        if safe_response_data(existing_profile, []):
             raise HTTPException(status_code=409, detail="Username is already taken")
         
         # 2. Best-effort check if user already exists by email.
