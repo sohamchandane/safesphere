@@ -63,22 +63,22 @@ const getCurrentLocation = async (): Promise<{ latitude: number; longitude: numb
 
 export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: GroundTruthFollowupProps) => {
   const { toast } = useToast();
-  const [record, setRecord] = useState<MonitoringRecord | null>(null);
+  const [records, setRecords] = useState<MonitoringRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [answering, setAnswering] = useState(false);
+  const [answeringRecordId, setAnsweringRecordId] = useState<string | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const fetchLatest = useCallback(async (showLoader = false) => {
+  const fetchPending = useCallback(async (showLoader = false) => {
     try {
       if (showLoader) setLoading(true);
       let { data, error } = await supabase
         .from('monitoring_data')
         .select('id, user_id, timestamp, attack_prediction, prediction_confidence, ground_truth, reminder_sent_at, latitude, longitude')
         .eq('user_id', userId)
+        .is('ground_truth', null)
         .order('timestamp', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(20);
 
       // Backward-compatible fallback if reminder_sent_at column is not yet migrated.
       if (error && String(error.message || '').toLowerCase().includes('reminder_sent_at')) {
@@ -86,18 +86,16 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
           .from('monitoring_data')
           .select('id, user_id, timestamp, attack_prediction, prediction_confidence, ground_truth, latitude, longitude')
           .eq('user_id', userId)
+          .is('ground_truth', null)
           .order('timestamp', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(20);
 
-        data = fallback.data
-          ? ({ ...fallback.data, reminder_sent_at: null } as any)
-          : null;
+        data = (fallback.data || []).map((row: any) => ({ ...row, reminder_sent_at: null })) as any;
         error = fallback.error;
       }
 
       if (error) throw error;
-      setRecord((data as MonitoringRecord) || null);
+      setRecords((data as MonitoringRecord[]) || []);
     } catch (error: any) {
       console.error('Ground truth fetch error:', error);
     } finally {
@@ -105,30 +103,38 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
     }
   }, [userId]);
 
-  const elapsedMs = useMemo(() => {
-    if (!record?.timestamp) return 0;
-    const ts = Date.parse(record.timestamp);
+  const getElapsedMs = (timestamp: string | null): number => {
+    if (!timestamp) return 0;
+    const ts = Date.parse(timestamp);
     if (Number.isNaN(ts)) return 0;
     return nowMs - ts;
-  }, [nowMs, record?.timestamp]);
+  };
 
-  const promptEligible = !!record && record.ground_truth === null && elapsedMs >= PROMPT_DELAY_MINUTES * 60 * 1000;
-  const reminderEligible =
-    !!record &&
-    record.ground_truth === null &&
-    !record.reminder_sent_at &&
-    elapsedMs >= REMINDER_DELAY_MINUTES * 60 * 1000;
+  const promptEligibleRecords = useMemo(
+    () => records.filter((r) => r.ground_truth === null && getElapsedMs(r.timestamp) >= PROMPT_DELAY_MINUTES * 60 * 1000),
+    [records, nowMs]
+  );
+
+  const latestPendingRecord = useMemo(() => records[0] || null, [records]);
+  const reminderEligible = useMemo(() => {
+    if (!latestPendingRecord) return false;
+    return (
+      latestPendingRecord.ground_truth === null &&
+      !latestPendingRecord.reminder_sent_at &&
+      getElapsedMs(latestPendingRecord.timestamp) >= REMINDER_DELAY_MINUTES * 60 * 1000
+    );
+  }, [latestPendingRecord, nowMs]);
 
   useEffect(() => {
-    fetchLatest(true);
+    fetchPending(true);
 
-    // Keep latest record fresh while user stays logged in.
+    // Keep pending records fresh while user stays logged in.
     const refreshId = window.setInterval(() => {
-      fetchLatest(false);
+      fetchPending(false);
     }, 60_000);
 
     return () => window.clearInterval(refreshId);
-  }, [fetchLatest]);
+  }, [fetchPending]);
 
   useEffect(() => {
     // Re-evaluate prompt/reminder timing without requiring relogin or reload.
@@ -138,7 +144,7 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
 
   useEffect(() => {
     const sendReminder = async () => {
-      if (!record || !email || reminderBusy || !reminderEligible) {
+      if (!latestPendingRecord || !email || reminderBusy || !reminderEligible) {
         return;
       }
 
@@ -155,12 +161,12 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
           headers,
           body: JSON.stringify({
             user_id: userId,
-            record_id: record.id,
+            record_id: latestPendingRecord.id,
             email,
             username,
-            prediction_prob: record.prediction_confidence || 0,
-            predicted_attack: !!record.attack_prediction,
-            recorded_at: record.timestamp,
+            prediction_prob: latestPendingRecord.prediction_confidence || 0,
+            predicted_attack: !!latestPendingRecord.attack_prediction,
+            recorded_at: latestPendingRecord.timestamp,
           }),
         });
 
@@ -170,7 +176,9 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
         }
 
         const nowIso = new Date().toISOString();
-        setRecord((prev) => (prev ? { ...prev, reminder_sent_at: nowIso } : prev));
+        setRecords((prev) =>
+          prev.map((item) => (item.id === latestPendingRecord.id ? { ...item, reminder_sent_at: nowIso } : item))
+        );
       } catch (error) {
         console.warn('Ground-truth reminder email failed', error);
       } finally {
@@ -179,13 +187,13 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
     };
 
     sendReminder();
-  }, [email, reminderBusy, reminderEligible, record, userId, username]);
+  }, [email, latestPendingRecord, reminderBusy, reminderEligible, userId, username]);
 
-  const submitAnswer = async (attackTriggered: boolean) => {
+  const submitAnswer = async (record: MonitoringRecord, attackTriggered: boolean) => {
     if (!record) return;
 
     try {
-      setAnswering(true);
+      setAnsweringRecordId(record.id);
       const location = await getCurrentLocation();
       const updatePayload: Record<string, any> = {
         ground_truth: attackTriggered,
@@ -206,7 +214,7 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
 
       if (error) throw error;
 
-      setRecord((prev) => (prev ? { ...prev, ground_truth: attackTriggered } : prev));
+      setRecords((prev) => prev.filter((item) => item.id !== record.id));
       toast({
         title: 'Thanks for the feedback',
         description: 'Your latest prediction has been validated.',
@@ -219,31 +227,40 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
         variant: 'destructive',
       });
     } finally {
-      setAnswering(false);
+      setAnsweringRecordId(null);
     }
   };
 
-  if (loading || !record || record.ground_truth !== null || !promptEligible) {
+  if (loading || promptEligibleRecords.length === 0) {
     return null;
   }
 
   return (
-    <Card className="shadow-soft border-0 border-l-4 border-l-warning">
-      <CardHeader>
-        <CardTitle>Validate Last Prediction</CardTitle>
-        <CardDescription>
-          Last session at {record.timestamp ? new Date(record.timestamp).toLocaleString() : 'N/A'} with predicted attack:{' '}
-          {record.attack_prediction ? 'Yes' : 'No'} ({Math.round((record.prediction_confidence || 0) * 100)}% confidence)
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap gap-3">
-        <Button disabled={answering} onClick={() => submitAnswer(true)}>
-          Yes, attack was triggered
-        </Button>
-        <Button disabled={answering} variant="outline" onClick={() => submitAnswer(false)}>
-          No, attack was not triggered
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {promptEligibleRecords.map((record, index) => {
+        const isAnswering = answeringRecordId === record.id;
+        return (
+          <Card key={record.id} className="shadow-soft border-0 border-l-4 border-l-warning">
+            <CardHeader>
+              <CardTitle>
+                {index === 0 ? 'Validate Last Prediction' : 'Pending Follow-up'}
+              </CardTitle>
+              <CardDescription>
+                Session at {record.timestamp ? new Date(record.timestamp).toLocaleString() : 'N/A'} with predicted attack:{' '}
+                {record.attack_prediction ? 'Yes' : 'No'} ({Math.round((record.prediction_confidence || 0) * 100)}% confidence)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3">
+              <Button disabled={isAnswering} onClick={() => submitAnswer(record, true)}>
+                Yes, attack was triggered
+              </Button>
+              <Button disabled={isAnswering} variant="outline" onClick={() => submitAnswer(record, false)}>
+                No, attack was not triggered
+              </Button>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
   );
 };

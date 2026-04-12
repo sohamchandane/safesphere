@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-app = FastAPI(title="Asthma Risk Prediction API")
+app = FastAPI(title="SafeSphere Prediction API")
 
 _reminder_worker_started = False
 _last_sweep_started_at: str | None = None
@@ -120,7 +120,7 @@ def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
 def send_plain_email(to_email: str, subject: str, body: str) -> bool:
     brevo_api_key = os.environ.get('BREVO_API_KEY')
     brevo_from_email = os.environ.get('BREVO_FROM_EMAIL')
-    brevo_from_name = os.environ.get('BREVO_FROM_NAME', 'Breathe Easy')
+    brevo_from_name = os.environ.get('BREVO_FROM_NAME', 'SafeSphere')
 
     if not brevo_api_key or not brevo_from_email:
         print("Brevo credentials not configured.")
@@ -179,7 +179,7 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     if alerts:
         body += "\n\nWARNING - Unexpectedly High Datapoints:\n" + "\n".join(alerts)
 
-    body += "\n\nStay Safe,\nBreathe Easy Team"
+    body += "\n\nStay Safe,\nSafeSphere Team"
     send_plain_email(to_email, subject, body)
 
 
@@ -203,7 +203,7 @@ def send_ground_truth_reminder_email(
     Please open the app and answer whether an attack was actually triggered.
 
     Thank you,
-    Breathe Easy Team
+    SafeSphere Team
     """
     return send_plain_email(to_email, subject, body)
 
@@ -261,7 +261,7 @@ def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None
 
 
 def run_ground_truth_reminder_sweep() -> dict:
-    """Send due reminders and mark rows as notified."""
+    """Send due reminders only for each user's latest unanswered session."""
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not supabase_service_role_key:
@@ -273,16 +273,26 @@ def run_ground_truth_reminder_sweep() -> dict:
     delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
     threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
 
-    # Fetch due unanswered sessions.
-    due = supabase.table("monitoring_data").select(
+    # Fetch all unanswered sessions and keep only the latest per user.
+    pending = supabase.table("monitoring_data").select(
         "id,user_id,timestamp,attack_prediction,prediction_confidence,ground_truth,reminder_sent_at"
-    ).is_("ground_truth", None).is_("reminder_sent_at", None).lte("timestamp", threshold_iso).order(
+    ).is_("ground_truth", None).order(
         "timestamp", desc=True
     ).execute()
 
-    rows = safe_response_data(due, [])
+    rows = safe_response_data(pending, [])
     if not rows:
-        return {"ok": True, "sent_count": 0, "checked_count": 0, "due_rows": 0, "no_email_count": 0, "send_failed_count": 0}
+        return {
+            "ok": True,
+            "sent_count": 0,
+            "checked_count": 0,
+            "pending_rows": 0,
+            "eligible_count": 0,
+            "no_email_count": 0,
+            "send_failed_count": 0,
+            "skipped_not_due_count": 0,
+            "skipped_already_reminded_count": 0,
+        }
 
     # Keep only the latest pending record per user.
     latest_by_user = {}
@@ -292,9 +302,24 @@ def run_ground_truth_reminder_sweep() -> dict:
             latest_by_user[uid] = row
 
     sent_count = 0
+    eligible_count = 0
     no_email_count = 0
     send_failed_count = 0
+    skipped_not_due_count = 0
+    skipped_already_reminded_count = 0
     for uid, row in latest_by_user.items():
+        ts = row.get("timestamp")
+        if not ts or str(ts) > threshold_iso:
+            skipped_not_due_count += 1
+            continue
+
+        # Never send reminders for older backlog rows. If latest unanswered row has
+        # already been reminded, skip this user entirely until they answer in-app.
+        if row.get("reminder_sent_at"):
+            skipped_already_reminded_count += 1
+            continue
+
+        eligible_count += 1
         to_email, username = get_profile_contact_info(supabase, uid)
         if not to_email:
             no_email_count += 1
@@ -322,9 +347,12 @@ def run_ground_truth_reminder_sweep() -> dict:
         "ok": True,
         "sent_count": sent_count,
         "checked_count": len(latest_by_user),
-        "due_rows": len(rows),
+        "pending_rows": len(rows),
+        "eligible_count": eligible_count,
         "no_email_count": no_email_count,
         "send_failed_count": send_failed_count,
+        "skipped_not_due_count": skipped_not_due_count,
+        "skipped_already_reminded_count": skipped_already_reminded_count,
     }
 
 
@@ -351,8 +379,36 @@ def ground_truth_reminder_status(x_api_key: str | None = Header(None)):
         if supabase_url and supabase_service_role_key:
             supabase = create_client(supabase_url, supabase_service_role_key)
             threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
-            due = supabase.table("monitoring_data").select("id", count="exact").is_("ground_truth", None).is_("reminder_sent_at", None).lte("timestamp", threshold_iso).execute()
-            due_preview = {"due_count": getattr(due, "count", None)}
+            pending = supabase.table("monitoring_data").select(
+                "id,user_id,timestamp,reminder_sent_at"
+            ).is_("ground_truth", None).order("timestamp", desc=True).execute()
+            rows = safe_response_data(pending, [])
+
+            latest_by_user = {}
+            for row in rows:
+                uid = row.get("user_id")
+                if uid and uid not in latest_by_user:
+                    latest_by_user[uid] = row
+
+            due_users = 0
+            already_reminded_latest = 0
+            not_due_latest = 0
+            for row in latest_by_user.values():
+                if row.get("reminder_sent_at"):
+                    already_reminded_latest += 1
+                    continue
+                ts = row.get("timestamp")
+                if ts and str(ts) <= threshold_iso:
+                    due_users += 1
+                else:
+                    not_due_latest += 1
+
+            due_preview = {
+                "due_users": due_users,
+                "latest_pending_users": len(latest_by_user),
+                "already_reminded_latest": already_reminded_latest,
+                "not_due_latest": not_due_latest,
+            }
     except Exception as e:
         due_preview = {"error": str(e)}
 

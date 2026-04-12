@@ -1,23 +1,36 @@
-Asthma Prediction API
+# SafeSphere API
 
-Usage
-
-- The API exposes `POST /predict` which expects JSON: `{ "features": { ... } }`.
-- It loads the model artifact from `api/model/bagging_model.joblib` or `public/bagging_model.joblib`.
-- Secure the endpoint by setting environment variable `PRED_API_KEY` on Render and sending the same key in header `x-api-key`.
-
-Start locally
+## Run Locally
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r api/requirements.txt
-uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Deploy to Render
+## Required Environment Variables
 
-- Create a new Web Service in Render using this repo and set the Root Directory to `api`.
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
-- Add environment variable `PRED_API_KEY` with a strong secret.
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PRED_API_KEY`
+- `BREVO_API_KEY`
+- `BREVO_FROM_EMAIL`
+- `BREVO_FROM_NAME`
+- `GROUND_TRUTH_REMINDER_DELAY_MINUTES`
+- `ENABLE_BACKGROUND_REMINDER_SWEEP`
+- `GROUND_TRUTH_SWEEP_INTERVAL_SECONDS`
+
+## Endpoints
+
+- `POST /predict`
+- `POST /register`
+- `POST /email-test`
+- `POST /ground-truth/reminder`
+- `POST /ground-truth/reminder-sweep`
+- `GET /ground-truth/reminder-status`
+
+## Reminder Rules
+
+- Reminder emails are sent only for each user's latest unanswered prediction.
+- Older unanswered predictions are intended to be answered from frontend follow-up cards.

@@ -1,52 +1,48 @@
-This project is a Vite + React frontend intended to be hosted as a static site.
+## Render Deployment
 
-Quick Render deployment guide
+This repository deploys as:
 
-1) Connect repository on Render
-   - Sign in to Render (https://render.com) and choose "New" → "Web Service" or "Static Site".
-   - Instead of using the UI, this repo includes `render.yaml` so you can use Render's automatic spec-based deploy.
+- Frontend static site from repository root (`dist` output)
+- Backend web service from `api` directory
 
-2) What `render.yaml` does
-   - Builds the app with `npm ci && npm run build`.
-   - Publishes the `dist` directory (the Vite output).
-   - Rewrites all routes to `/index.html` so the SPA routing works on direct links.
+`render.yaml` contains frontend build/publish settings.
 
-3) Build / Preview locally
+### Frontend (Static Site)
 
-Install deps and run dev server (mobile-friendly preview):
+- Build command: `npm ci && npm run build`
+- Publish directory: `dist`
+- SPA rewrite to `/index.html`
 
-```bash
-npm ci
-npm run dev
-```
+Required frontend env vars:
 
-For a production build (what Render runs):
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_OPENWEATHER_API_KEY`
+- `VITE_PRED_API_URL`
+- `VITE_PRED_API_KEY`
+- `VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES`
+- `VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES`
 
-```bash
-npm run build
-# then serve `dist` with a static server, e.g.:
-# npx serve dist
-```
+### Backend (Web Service)
 
-4) Mobile compatibility notes
-- The app is responsive (Tailwind). Test on a mobile browser (Chrome on Android / Safari on iOS).
-- Web Bluetooth: iOS Safari does not support Web Bluetooth. Use a Chromium-based browser on Android for smartwatch connectivity.
-- Web Bluetooth requires a secure context: `https://` or `http://localhost`. Render provides HTTPS by default, so the deployed site will work.
-- Location API requires user permission and secure context as well.
+- Root directory: `api`
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
 
-5) Backend / API / ML model integration
-- This repo is the frontend only. For full functionality you will need:
-  - An API endpoint(s) to fetch weather/pollen and to store user logs/predictions.
-  - Authentication endpoints for login/registration (email confirmation flow).
-  - ML model endpoints (serving prediction models). These can be hosted as separate Render services or other cloud functions.
-- Use environment variables for API base URLs and keys. You can add them on Render's dashboard or in `render.yaml` as `envVars`.
+Required backend env vars:
 
-6) Recommended next steps
-- Add a deploy preview by connecting the repo to Render and pushing a branch.
-- Create separate Render services for your ML models (Docker or Python web service) and your database (managed DB or Supabase).
-- Add `DISABLE_SSR` or other env vars if needed.
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PRED_API_KEY`
+- `BREVO_API_KEY`
+- `BREVO_FROM_EMAIL`
+- `BREVO_FROM_NAME`
+- `GROUND_TRUTH_REMINDER_DELAY_MINUTES`
+- `ENABLE_BACKGROUND_REMINDER_SWEEP`
+- `GROUND_TRUTH_SWEEP_INTERVAL_SECONDS`
 
-If you want, I can:
-- Add environment-variable wiring (e.g. `VITE_API_BASE_URL`) to the code and to `render.yaml`.
-- Add a small `status` page or health-check endpoint to verify backend connectivity.
-- Prepare a Dockerfile if you'd rather host the frontend in a container.
+### Reminder Workflow
+
+- Background reminder sweep runs in backend.
+- Only the latest unanswered prediction per user is emailed.
+- Older unanswered predictions are handled in frontend follow-up cards.
