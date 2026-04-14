@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import * as externalApis from '@/lib/externalApis';
+import { getApiKey, getApiUrl } from '@/lib/runtimeConfig';
 
 interface RiskPredictionProps {
   location: { latitude: number; longitude: number };
@@ -137,17 +138,14 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
         };
 
         // Call backend prediction API (assumes /api/predict exists and uses API key)
-        const apiUrl = import.meta.env.VITE_PRED_API_URL || (window as any).REACT_APP_PRED_API_URL || '/api/predict';
-        const apiKey = import.meta.env.VITE_PRED_API_KEY || (window as any).REACT_APP_PRED_API_KEY;
+        const apiUrl = getApiUrl();
+        const apiKey = getApiKey();
 
         const resp = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(apiKey ? { 'x-api-key': apiKey } : {}),
-            // Ask the API to echo back the received payload/headers for debugging so
-            // you can inspect the full packet in the browser Network panel.
-            'x-echo-payload': '1',
           },
           body: JSON.stringify({ 
             features: sanitizedPayload,

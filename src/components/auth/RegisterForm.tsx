@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Activity, ArrowRight, ArrowLeft } from 'lucide-react';
 import { PersonalInfoStep } from './register/PersonalInfoStep';
 import { MedicalHistoryStep } from './register/MedicalHistoryStep';
+import { getApiBaseUrl } from '@/lib/runtimeConfig';
 
 interface PersonalInfo {
   email: string;
@@ -62,9 +62,7 @@ export const RegisterForm = () => {
 
     try {
       // Call the backend registration API (which uses service role to bypass RLS)
-      const apiUrl = import.meta.env.VITE_PRED_API_URL || (window as any).REACT_APP_PRED_API_URL || '/api/predict';
-      // Remove '/predict' from the end if it exists to get the base API URL
-      const baseUrl = apiUrl.replace(/\/predict$/, '');
+      const baseUrl = getApiBaseUrl();
       const registerUrl = `${baseUrl}/register`;
 
       const response = await fetch(registerUrl, {
@@ -101,7 +99,7 @@ export const RegisterForm = () => {
         throw new Error(errorMessage);
       }
 
-      const result = await response.json();
+      await response.json();
 
       toast({
         title: 'Registration successful!',

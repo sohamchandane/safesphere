@@ -1,3 +1,5 @@
+import { getOpenWeatherApiKey } from '@/lib/runtimeConfig';
+
 export type WeatherPollution = {
   temperature: number | null;
   pressure: number | null;
@@ -15,7 +17,7 @@ export type WeatherPollution = {
 
 // Fetch weather (temperature, pressure) and air pollution components from OpenWeatherMap
 export async function fetchWeatherAndPollution(lat: number, lon: number): Promise<WeatherPollution> {
-  const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY || (window as any).REACT_APP_OPENWEATHER_API_KEY;
+  const apiKey = getOpenWeatherApiKey();
   if (!apiKey) throw new Error('OpenWeather API key not configured (VITE_OPENWEATHER_API_KEY)');
 
   // Current weather
@@ -43,7 +45,7 @@ export async function fetchWeatherAndPollution(lat: number, lon: number): Promis
         no2: comps.no2 ?? null,
         o3: comps.o3 ?? null,
         so2: comps.so2 ?? null,
-        pm2_5: comps.pm2_5 ?? comps.pm2_5 ?? comps.pm2_5 ?? comps.pm2_5 ?? null,
+        pm2_5: comps.pm2_5 ?? null,
         pm10: comps.pm10 ?? null,
         nh3: comps.nh3 ?? null,
       };
@@ -60,7 +62,6 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
   weed?: number | null;
 } | null> {
   // Try with retries and exponential backoff for transient upstream errors
-  // const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC`;
   const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC`;
 
   const maxAttempts = 3;

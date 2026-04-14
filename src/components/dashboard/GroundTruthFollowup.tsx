@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl, getApiKey } from '@/lib/runtimeConfig';
 
 type MonitoringRecord = {
   id: string;
@@ -33,15 +34,6 @@ const parseMinutesEnv = (value: string | undefined, fallbackMinutes: number): nu
 
 const PROMPT_DELAY_MINUTES = parseMinutesEnv(import.meta.env.VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES, 10);
 const REMINDER_DELAY_MINUTES = parseMinutesEnv(import.meta.env.VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES, 20);
-
-const getApiBaseUrl = (): string => {
-  const apiUrl = import.meta.env.VITE_PRED_API_URL || (window as any).REACT_APP_PRED_API_URL || '/api/predict';
-  return apiUrl.replace(/\/predict$/, '');
-};
-
-const getApiKey = (): string | undefined => {
-  return import.meta.env.VITE_PRED_API_KEY || (window as any).REACT_APP_PRED_API_KEY;
-};
 
 const getCurrentLocation = async (): Promise<{ latitude: number; longitude: number } | null> => {
   if (!navigator.geolocation) {

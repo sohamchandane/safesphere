@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -487,7 +487,7 @@ def start_background_reminder_sweep():
 
 
 @app.post('/predict')
-def predict(req: PredictRequest, request: Request, x_api_key: str | None = Header(None)):
+def predict(req: PredictRequest, x_api_key: str | None = Header(None)):
     if not auth_ok(x_api_key):
         raise HTTPException(status_code=401, detail='Invalid API key')
 
@@ -530,10 +530,6 @@ def predict(req: PredictRequest, request: Request, x_api_key: str | None = Heade
         raise HTTPException(status_code=500, detail=f'Prediction failed: {e}')
 
     resp = {'probability': float(proba), 'risk_class': int(pred)}
-    
-    echo = request.headers.get('x-echo-payload')
-    if echo and str(echo).lower() in ('1', 'true', 'yes'):
-        resp['echo'] = {'received_features': req.features, 'received_headers': dict(request.headers)}
     
     if req.email:
         send_alert_email(req.email, req.username or "User", proba, req.features)
