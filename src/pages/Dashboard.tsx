@@ -11,6 +11,7 @@ import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
 import { RiskPrediction } from '@/components/dashboard/RiskPrediction';
 import { AttackHistory } from '@/components/dashboard/AttackHistory';
 import { GroundTruthFollowup } from '@/components/dashboard/GroundTruthFollowup';
+import { RiskMap } from '@/components/dashboard/RiskMap';
 
 const Dashboard = () => {
   const { user, loading, signOut } = useAuth();
@@ -107,6 +108,8 @@ const Dashboard = () => {
             username={user.user_metadata?.username || user.email?.split('@')[0] || 'User'}
             onAnswered={() => setHistoryRefreshKey((prev) => prev + 1)}
           />
+
+          <RiskMap userId={user.id} refreshKey={historyRefreshKey} />
 
           {/* Attack History */}
           <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />

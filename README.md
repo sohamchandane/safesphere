@@ -69,6 +69,19 @@ GROUND_TRUTH_SWEEP_INTERVAL_SECONDS=60
 - Older unanswered predictions are handled in the frontend follow-up UI.
 - Background sweep interval and delay are controlled via backend env variables.
 
+## Risk Map
+
+- Dashboard includes a user-private Risk Map based on `monitoring_data` coordinates.
+- Layer A: predicted events (all predictions), Layer B: confirmed attacks (`ground_truth=true`).
+- Filters: date range, risk bands, event layer, and time-of-day.
+- Low zoom uses hotspot aggregation (~150m grid), mid zoom uses marker clustering, high zoom shows individual markers.
+- Marker details include timestamp, probability, prediction/confirmation flags, location, and available health/environment factors.
+- No extra map API key is required (OpenStreetMap tiles).
+
+### Required DB Migration
+
+Apply the migration in `supabase/migrations/20260414_add_monitoring_data_map_indexes.sql` to improve map query performance.
+
 ## Deployment Notes
 
 - Frontend build output is `dist`.

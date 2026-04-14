@@ -118,3 +118,64 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .risk-map-canvas {
+    height: 520px;
+    width: 100%;
+  }
+
+  .risk-marker-wrapper {
+    background: transparent;
+    border: none;
+  }
+
+  .risk-marker {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  }
+
+  .risk-low {
+    background-color: #16a34a;
+  }
+
+  .risk-moderate {
+    background-color: #f59e0b;
+  }
+
+  .risk-high {
+    background-color: #dc2626;
+  }
+
+  .risk-confirmed {
+    box-shadow: 0 0 0 2px #111827;
+  }
+
+  .legend-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+  }
+
+  .legend-low {
+    background-color: #16a34a;
+  }
+
+  .legend-moderate {
+    background-color: #f59e0b;
+  }
+
+  .legend-high {
+    background-color: #dc2626;
+  }
+
+  .legend-confirmed {
+    background: linear-gradient(135deg, #dc2626 50%, #111827 50%);
+  }
+}
