@@ -62,6 +62,12 @@ All colors MUST be HSL.
     /* Transitions */
     --transition-base: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Accessible risk-map palette */
+    --risk-low: 142 76% 36%;
+    --risk-moderate: 38 92% 50%;
+    --risk-high: 0 72% 51%;
+    --risk-confirmed: 225 25% 15%;
   }
 
   .dark {
@@ -106,6 +112,90 @@ All colors MUST be HSL.
     --shadow-soft: 0 2px 8px hsla(0, 0%, 0%, 0.3);
     --shadow-medium: 0 4px 16px hsla(0, 0%, 0%, 0.4);
     --shadow-elevation: 0 8px 24px hsla(0, 0%, 0%, 0.5);
+
+    --risk-low: 142 76% 42%;
+    --risk-moderate: 38 92% 55%;
+    --risk-high: 0 72% 58%;
+    --risk-confirmed: 210 20% 92%;
+  }
+
+  html[data-vision-mode="deuteranopia"] {
+    --primary: 214 84% 45%;
+    --primary-light: 214 84% 60%;
+    --primary-dark: 214 84% 30%;
+    --accent: 31 95% 52%;
+    --success: 198 88% 40%;
+    --warning: 48 100% 45%;
+    --destructive: 286 72% 42%;
+    --ring: 214 84% 45%;
+    --risk-low: 214 84% 45%;
+    --risk-moderate: 31 95% 52%;
+    --risk-high: 286 72% 42%;
+    --risk-confirmed: 230 25% 18%;
+  }
+
+  html[data-vision-mode="protanopia"] {
+    --primary: 196 95% 40%;
+    --primary-light: 196 95% 58%;
+    --primary-dark: 196 95% 28%;
+    --accent: 33 100% 50%;
+    --success: 204 86% 42%;
+    --warning: 46 100% 44%;
+    --destructive: 300 68% 40%;
+    --ring: 196 95% 40%;
+    --risk-low: 196 95% 40%;
+    --risk-moderate: 33 100% 50%;
+    --risk-high: 300 68% 40%;
+    --risk-confirmed: 230 25% 18%;
+  }
+
+  html[data-vision-mode="tritanopia"] {
+    --primary: 350 72% 50%;
+    --primary-light: 350 72% 64%;
+    --primary-dark: 350 72% 34%;
+    --accent: 24 95% 50%;
+    --success: 124 50% 38%;
+    --warning: 44 100% 48%;
+    --destructive: 285 58% 45%;
+    --ring: 350 72% 50%;
+    --risk-low: 124 50% 38%;
+    --risk-moderate: 24 95% 50%;
+    --risk-high: 350 72% 50%;
+    --risk-confirmed: 230 25% 18%;
+  }
+
+  html[data-vision-mode="achromatopsia"] {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 12%;
+    --primary: 0 0% 18%;
+    --primary-light: 0 0% 35%;
+    --primary-dark: 0 0% 10%;
+    --secondary: 0 0% 92%;
+    --secondary-foreground: 0 0% 18%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 35%;
+    --accent: 0 0% 30%;
+    --accent-foreground: 0 0% 100%;
+    --success: 0 0% 24%;
+    --warning: 0 0% 44%;
+    --destructive: 0 0% 14%;
+    --border: 0 0% 78%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 18%;
+    --gradient-hero: linear-gradient(135deg, hsl(0, 0%, 18%), hsl(0, 0%, 34%));
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%), hsl(0, 0%, 96%));
+    --gradient-subtle: linear-gradient(135deg, hsl(0, 0%, 98%), hsl(0, 0%, 94%));
+    --shadow-soft: 0 2px 8px hsla(0, 0%, 0%, 0.12);
+    --shadow-medium: 0 4px 16px hsla(0, 0%, 0%, 0.18);
+    --shadow-elevation: 0 8px 24px hsla(0, 0%, 0%, 0.24);
+    --risk-low: 0 0% 30%;
+    --risk-moderate: 0 0% 50%;
+    --risk-high: 0 0% 12%;
+    --risk-confirmed: 0 0% 0%;
   }
 }
 
@@ -145,19 +235,19 @@ All colors MUST be HSL.
   }
 
   .risk-low {
-    background-color: #16a34a;
+    background-color: hsl(var(--risk-low));
   }
 
   .risk-moderate {
-    background-color: #f59e0b;
+    background-color: hsl(var(--risk-moderate));
   }
 
   .risk-high {
-    background-color: #dc2626;
+    background-color: hsl(var(--risk-high));
   }
 
   .risk-confirmed {
-    box-shadow: 0 0 0 2px #111827;
+    box-shadow: 0 0 0 2px hsl(var(--risk-confirmed));
   }
 
   .legend-dot {
@@ -169,18 +259,60 @@ All colors MUST be HSL.
   }
 
   .legend-low {
-    background-color: #16a34a;
+    background-color: hsl(var(--risk-low));
   }
 
   .legend-moderate {
-    background-color: #f59e0b;
+    background-color: hsl(var(--risk-moderate));
   }
 
   .legend-high {
-    background-color: #dc2626;
+    background-color: hsl(var(--risk-high));
   }
 
   .legend-confirmed {
-    background: linear-gradient(135deg, #dc2626 50%, #111827 50%);
+    background: linear-gradient(135deg, hsl(var(--risk-high)) 50%, hsl(var(--risk-confirmed)) 50%);
+  }
+
+  html[data-vision-mode="deuteranopia"] .risk-marker,
+  html[data-vision-mode="protanopia"] .risk-marker,
+  html[data-vision-mode="tritanopia"] .risk-marker,
+  html[data-vision-mode="achromatopsia"] .risk-marker {
+    border-width: 2px;
+  }
+
+  html[data-vision-mode="deuteranopia"] .risk-low,
+  html[data-vision-mode="protanopia"] .risk-low,
+  html[data-vision-mode="tritanopia"] .risk-low,
+  html[data-vision-mode="achromatopsia"] .risk-low,
+  html[data-vision-mode="deuteranopia"] .legend-low,
+  html[data-vision-mode="protanopia"] .legend-low,
+  html[data-vision-mode="tritanopia"] .legend-low,
+  html[data-vision-mode="achromatopsia"] .legend-low {
+    border-radius: 2px;
+  }
+
+  html[data-vision-mode="deuteranopia"] .risk-moderate,
+  html[data-vision-mode="protanopia"] .risk-moderate,
+  html[data-vision-mode="tritanopia"] .risk-moderate,
+  html[data-vision-mode="achromatopsia"] .risk-moderate,
+  html[data-vision-mode="deuteranopia"] .legend-moderate,
+  html[data-vision-mode="protanopia"] .legend-moderate,
+  html[data-vision-mode="tritanopia"] .legend-moderate,
+  html[data-vision-mode="achromatopsia"] .legend-moderate {
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    border-radius: 0;
+  }
+
+  html[data-vision-mode="deuteranopia"] .risk-high,
+  html[data-vision-mode="protanopia"] .risk-high,
+  html[data-vision-mode="tritanopia"] .risk-high,
+  html[data-vision-mode="achromatopsia"] .risk-high,
+  html[data-vision-mode="deuteranopia"] .legend-high,
+  html[data-vision-mode="protanopia"] .legend-high,
+  html[data-vision-mode="tritanopia"] .legend-high,
+  html[data-vision-mode="achromatopsia"] .legend-high {
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    border-radius: 0;
   }
 }

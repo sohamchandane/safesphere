@@ -20,10 +20,12 @@
       (function () {
         try {
           var storedTheme = window.localStorage.getItem('theme');
+          var storedVisionMode = window.localStorage.getItem('vision-mode') || 'normal';
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
           var isDark = storedTheme ? storedTheme === 'dark' : prefersDark;
           document.documentElement.classList.toggle('dark', isDark);
           document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+          document.documentElement.dataset.visionMode = storedVisionMode;
         } catch (e) {}
       })();
     </script>
