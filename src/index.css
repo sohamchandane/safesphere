@@ -114,7 +114,12 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
   body {
+    min-height: 100vh;
     @apply bg-background text-foreground;
   }
 }
