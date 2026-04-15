@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .env
 /node_modules
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]

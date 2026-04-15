@@ -31,8 +31,6 @@ app.add_middleware(
 
 MODEL_PATHS = [
     os.path.join(os.path.dirname(__file__), "model", "bagging_model.joblib"),
-    os.path.join(os.path.dirname(__file__), "..", "public", "bagging_model.joblib"),
-    os.path.join(os.path.dirname(__file__), "..", "bagging_model.joblib"),
 ]
 
 artifact = None
