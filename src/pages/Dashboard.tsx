@@ -80,11 +80,25 @@ const Dashboard = () => {
                 <Sparkles className="h-3.5 w-3.5" />
                 Environmental Monitoring
               </div>
-              <div className="space-y-2">
-                <CardTitle className="text-2xl sm:text-3xl">Weather Data</CardTitle>
-                <CardDescription className="text-sm sm:text-base">
-                  Location, weather conditions, and pollen levels for your area
-                </CardDescription>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <CardTitle className="text-2xl sm:text-3xl">Weather Data</CardTitle>
+                  <CardDescription className="text-sm sm:text-base">
+                    Location, weather conditions, and pollen levels for your area
+                  </CardDescription>
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3 lg:min-w-[320px]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location Details</p>
+                  {location ? (
+                    <div className="mt-2 grid gap-1 text-sm sm:text-base">
+                      <p className="font-medium text-foreground">Latitude: {location.latitude.toFixed(6)}</p>
+                      <p className="font-medium text-foreground">Longitude: {location.longitude.toFixed(6)}</p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted-foreground">Enable location to display coordinates.</p>
+                  )}
+                </div>
               </div>
             </CardHeader>
 
@@ -96,7 +110,7 @@ const Dashboard = () => {
                   Location
                 </h3>
                 <div className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-soft">
-                  <LocationAccess onLocationUpdate={setLocation} embedded />
+                  <LocationAccess onLocationUpdate={setLocation} embedded showCoordinates={false} />
                 </div>
               </div>
 

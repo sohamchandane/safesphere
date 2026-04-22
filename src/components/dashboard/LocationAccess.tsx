@@ -7,9 +7,10 @@ import { useToast } from '@/hooks/use-toast';
 interface LocationAccessProps {
   onLocationUpdate: (location: { latitude: number; longitude: number }) => void;
   embedded?: boolean;
+  showCoordinates?: boolean;
 }
 
-export const LocationAccess = ({ onLocationUpdate, embedded = false }: LocationAccessProps) => {
+export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordinates = true }: LocationAccessProps) => {
   const [status, setStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const { toast } = useToast();
@@ -98,10 +99,12 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false }: LocationA
         ) : status === 'granted' && location ? (
           <div className="space-y-2">
             <p className="text-sm text-success">Location enabled successfully</p>
-            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span>Latitude: {location.latitude.toFixed(6)}</span>
-              <span>Longitude: {location.longitude.toFixed(6)}</span>
-            </div>
+            {showCoordinates && (
+              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                <span>Latitude: {location.latitude.toFixed(6)}</span>
+                <span>Longitude: {location.longitude.toFixed(6)}</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
