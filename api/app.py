@@ -154,8 +154,15 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
         if val is not None and isinstance(val, (int, float)) and val > limit:
             alerts.append(f"- {key.upper()}: {val} (High, > {limit})")
 
-    is_high_risk = prediction_prob >= 0.5
-    subject = f"Asthma Risk Alert for {username}" if is_high_risk else f"Asthma Risk Update for {username}"
+    if prediction_prob >= 0.75:
+        risk_level = "HIGH RISK"
+        subject = f"Asthma High Risk Alert for {username}"
+    elif prediction_prob >= 0.5:
+        risk_level = "MODERATE RISK"
+        subject = f"Asthma Moderate Risk Update for {username}"
+    else:
+        risk_level = "LOW RISK"
+        subject = f"Asthma Low Risk Update for {username}"
 
     body = f"""
     Hello {username},
@@ -163,7 +170,7 @@ def send_alert_email(to_email: str, username: str, prediction_prob: float, featu
     Here is your latest asthma risk assessment.
 
     Prediction Risk: {int(prediction_prob * 100)}%
-    Status: {"HIGH RISK" if is_high_risk else "Low/Moderate Risk"}
+    Status: {risk_level}
 
     Location:
     Lat: {features.get('latitude', 'N/A')}
