@@ -6,9 +6,10 @@ import { useToast } from '@/hooks/use-toast';
 
 interface LocationAccessProps {
   onLocationUpdate: (location: { latitude: number; longitude: number }) => void;
+  embedded?: boolean;
 }
 
-export const LocationAccess = ({ onLocationUpdate }: LocationAccessProps) => {
+export const LocationAccess = ({ onLocationUpdate, embedded = false }: LocationAccessProps) => {
   const [status, setStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const { toast } = useToast();
@@ -57,6 +58,62 @@ export const LocationAccess = ({ onLocationUpdate }: LocationAccessProps) => {
     requestLocation();
   }, []);
 
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            Location Access
+          </CardTitle>
+          <CardDescription>
+            Required to fetch weather and pollen data for your area
+          </CardDescription>
+        </div>
+        {status === 'granted' && (
+          <CheckCircle className="h-6 w-6 text-success" />
+        )}
+        {status === 'denied' && (
+          <AlertCircle className="h-6 w-6 text-destructive" />
+        )}
+      </div>
+
+      <div className="mt-4">
+        {status === 'idle' || status === 'requesting' ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">Requesting location access...</p>
+            <Button 
+              onClick={requestLocation}
+              disabled={status === 'requesting'}
+              className="bg-gradient-hero"
+            >
+              Enable Location
+            </Button>
+          </div>
+        ) : status === 'granted' && location ? (
+          <div className="space-y-2">
+            <p className="text-sm text-success">Location enabled successfully</p>
+            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+              <span>Latitude: {location.latitude.toFixed(4)}</span>
+              <span>Longitude: {location.longitude.toFixed(4)}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-destructive">Location access denied</p>
+            <Button onClick={requestLocation} variant="outline">
+              Try Again
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div>{content}</div>;
+  }
+
   return (
     <Card className="shadow-soft border-0">
       <CardHeader>
@@ -79,33 +136,7 @@ export const LocationAccess = ({ onLocationUpdate }: LocationAccessProps) => {
         </div>
       </CardHeader>
       <CardContent>
-        {status === 'idle' || status === 'requesting' ? (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Requesting location access...</p>
-            <Button 
-              onClick={requestLocation}
-              disabled={status === 'requesting'}
-              className="bg-gradient-hero"
-            >
-              Enable Location
-            </Button>
-          </div>
-        ) : status === 'granted' && location ? (
-          <div className="space-y-2">
-            <p className="text-sm text-success">Location enabled successfully</p>
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              <span>Latitude: {location.latitude.toFixed(4)}</span>
-              <span>Longitude: {location.longitude.toFixed(4)}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-destructive">Location access denied</p>
-            <Button onClick={requestLocation} variant="outline">
-              Try Again
-            </Button>
-          </div>
-        )}
+        {content}
       </CardContent>
     </Card>
   );

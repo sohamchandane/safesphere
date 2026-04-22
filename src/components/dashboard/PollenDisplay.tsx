@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface PollenDisplayProps {
   location: { latitude: number; longitude: number };
+  embedded?: boolean;
 }
 
 interface PollenData {
@@ -14,7 +15,7 @@ interface PollenData {
   weed_pollen: number;
 }
 
-export const PollenDisplay = ({ location }: PollenDisplayProps) => {
+export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps) => {
   const [pollen, setPollen] = useState<PollenData | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
@@ -51,8 +52,62 @@ export const PollenDisplay = ({ location }: PollenDisplayProps) => {
     return { label: 'High', color: 'text-destructive' };
   };
 
+  const renderContent = () => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Grass Pollen</span>
+          <span className={`text-sm font-bold ${getPollenLevel(pollen?.grass_pollen ?? 0).color}`}>
+            {getPollenLevel(pollen?.grass_pollen ?? 0).label}
+          </span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-hero transition-all"
+            style={{ width: `${Math.min(100, ((pollen?.grass_pollen ?? 0) / 5) * 100)}%` }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{pollen?.grass_pollen ?? 0} grains/m³</p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Tree Pollen</span>
+          <span className={`text-sm font-bold ${getPollenLevel(pollen?.tree_pollen ?? 0).color}`}>
+            {getPollenLevel(pollen?.tree_pollen ?? 0).label}
+          </span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-hero transition-all"
+            style={{ width: `${Math.min(100, ((pollen?.tree_pollen ?? 0) / 5) * 100)}%` }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{pollen?.tree_pollen ?? 0} grains/m³</p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Weed Pollen</span>
+          <span className={`text-sm font-bold ${getPollenLevel(pollen?.weed_pollen ?? 0).color}`}>
+            {getPollenLevel(pollen?.weed_pollen ?? 0).label}
+          </span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-hero transition-all"
+            style={{ width: `${Math.min(100, ((pollen?.weed_pollen ?? 0) / 5) * 100)}%` }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{pollen?.weed_pollen ?? 0} grains/m³</p>
+      </div>
+    </div>
+  );
+
   if (loading) {
-    return (
+    return embedded ? (
+      <div className="text-sm text-muted-foreground">Loading pollen data...</div>
+    ) : (
       <Card className="shadow-soft border-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -69,6 +124,23 @@ export const PollenDisplay = ({ location }: PollenDisplayProps) => {
 
   if (!pollen) return null;
 
+  if (embedded) {
+    return (
+      <div className="space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4 shadow-soft">
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="flex items-center gap-2 font-semibold text-foreground">
+            <Flower2 className="h-4 w-4 text-primary" />
+            Pollen Data
+          </h4>
+          <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            Level-coded
+          </span>
+        </div>
+        {renderContent()}
+      </div>
+    );
+  }
+
   return (
     <Card className="shadow-soft border-0">
       <CardHeader>
@@ -79,55 +151,7 @@ export const PollenDisplay = ({ location }: PollenDisplayProps) => {
         <CardDescription>Current pollen count in your area</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Grass Pollen</span>
-              <span className={`text-sm font-bold ${getPollenLevel(pollen.grass_pollen).color}`}>
-                {getPollenLevel(pollen.grass_pollen).label}
-              </span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-hero transition-all"
-                style={{ width: `${Math.min(100, (pollen.grass_pollen / 5) * 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">{pollen.grass_pollen} grains/m³</p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Tree Pollen</span>
-              <span className={`text-sm font-bold ${getPollenLevel(pollen.tree_pollen).color}`}>
-                {getPollenLevel(pollen.tree_pollen).label}
-              </span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-hero transition-all"
-                style={{ width: `${Math.min(100, (pollen.tree_pollen / 5) * 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">{pollen.tree_pollen} grains/m³</p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Weed Pollen</span>
-              <span className={`text-sm font-bold ${getPollenLevel(pollen.weed_pollen).color}`}>
-                {getPollenLevel(pollen.weed_pollen).label}
-              </span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-hero transition-all"
-                style={{ width: `${Math.min(100, (pollen.weed_pollen / 5) * 100)}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">{pollen.weed_pollen} grains/m³</p>
-          </div>
-        </div>
+        {renderContent()}
       </CardContent>
     </Card>
   );

@@ -224,15 +224,18 @@ All colors MUST be HSL.
       linear-gradient(to bottom, hsla(var(--border), 0.22) 1px, transparent 1px);
     background-size: auto, auto, 36px 36px, 36px 36px;
     background-position: center;
+    contain: layout style paint;
   }
 
   .hero-orb {
-    position: absolute;
+    position: fixed;
     border-radius: 9999px;
     filter: blur(52px);
     pointer-events: none;
     opacity: 0.55;
     animation: orb-float 10s ease-in-out infinite;
+    will-change: transform;
+    contain: layout style paint;
   }
 
   .hero-orb-teal {
