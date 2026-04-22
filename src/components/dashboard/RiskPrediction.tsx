@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -15,6 +15,7 @@ interface RiskPredictionProps {
 
 export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionProps) => {
   const { user } = useAuth();
+  const lastRunRef = useRef<{ key: string; ts: number } | null>(null);
   const [prediction, setPrediction] = useState<{
     risk: boolean;
     confidence: number;
@@ -24,6 +25,16 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
   const { toast } = useToast();
 
   useEffect(() => {
+    const roundedHeartRate = Math.round(heartRate);
+    const runKey = `${userId}:${location.latitude.toFixed(4)}:${location.longitude.toFixed(4)}:${roundedHeartRate}`;
+    const now = Date.now();
+
+    // Skip duplicate runs from incidental rerenders in a short window.
+    if (lastRunRef.current && lastRunRef.current.key === runKey && now - lastRunRef.current.ts < 30_000) {
+      return;
+    }
+    lastRunRef.current = { key: runKey, ts: now };
+
     const makePrediction = async () => {
       try {
         setLoading(true);

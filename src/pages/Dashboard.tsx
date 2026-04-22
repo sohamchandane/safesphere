@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,12 @@ import { WeatherDisplay } from '@/components/dashboard/WeatherDisplay';
 import { PollenDisplay } from '@/components/dashboard/PollenDisplay';
 import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
 import { RiskPrediction } from '@/components/dashboard/RiskPrediction';
-import { AttackHistory } from '@/components/dashboard/AttackHistory';
 import { GroundTruthFollowup } from '@/components/dashboard/GroundTruthFollowup';
-import { RiskMap } from '@/components/dashboard/RiskMap';
+
+const RiskMap = lazy(() => import('@/components/dashboard/RiskMap').then((mod) => ({ default: mod.RiskMap })));
+const AttackHistory = lazy(() =>
+  import('@/components/dashboard/AttackHistory').then((mod) => ({ default: mod.AttackHistory }))
+);
 
 const Dashboard = () => {
   const { user, loading, signOut } = useAuth();
@@ -109,10 +112,29 @@ const Dashboard = () => {
             onAnswered={() => setHistoryRefreshKey((prev) => prev + 1)}
           />
 
-          <RiskMap userId={user.id} refreshKey={historyRefreshKey} />
+          <Suspense
+            fallback={
+              <Card className="shadow-soft border-0">
+                <CardHeader>
+                  <CardTitle>Loading map insights...</CardTitle>
+                </CardHeader>
+              </Card>
+            }
+          >
+            <RiskMap userId={user.id} refreshKey={historyRefreshKey} />
+          </Suspense>
 
-          {/* Attack History */}
-          <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />
+          <Suspense
+            fallback={
+              <Card className="shadow-soft border-0">
+                <CardHeader>
+                  <CardTitle>Loading attack history...</CardTitle>
+                </CardHeader>
+              </Card>
+            }
+          >
+            <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />
+          </Suspense>
         </div>
       </div>
     </div>

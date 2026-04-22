@@ -15,44 +15,78 @@ export type WeatherPollution = {
   } | null;
 };
 
+const WEATHER_CACHE_TTL_MS = 2 * 60 * 1000;
+const POLLEN_CACHE_TTL_MS = 30 * 60 * 1000;
+
+const weatherCache = new Map<string, { ts: number; value: WeatherPollution }>();
+const pollenCache = new Map<string, { ts: number; value: { grass?: number | null; tree?: number | null; weed?: number | null } | null }>();
+const weatherInFlight = new Map<string, Promise<WeatherPollution>>();
+const pollenInFlight = new Map<string, Promise<{ grass?: number | null; tree?: number | null; weed?: number | null } | null>>();
+
+const toCacheKey = (lat: number, lon: number) => `${lat.toFixed(3)},${lon.toFixed(3)}`;
+
+const fromTtlCache = <T>(store: Map<string, { ts: number; value: T }>, key: string, ttlMs: number): T | null => {
+  const hit = store.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.ts > ttlMs) {
+    store.delete(key);
+    return null;
+  }
+  return hit.value;
+};
+
 // Fetch weather (temperature, pressure) and air pollution components from OpenWeatherMap
 export async function fetchWeatherAndPollution(lat: number, lon: number): Promise<WeatherPollution> {
+  const cacheKey = toCacheKey(lat, lon);
+  const cached = fromTtlCache(weatherCache, cacheKey, WEATHER_CACHE_TTL_MS);
+  if (cached) return cached;
+
+  const inFlight = weatherInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
   const apiKey = getOpenWeatherApiKey();
   if (!apiKey) throw new Error('OpenWeather API key not configured (VITE_OPENWEATHER_API_KEY)');
 
-  // Current weather
-  const weatherRes = await fetch(
-    `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
-  );
-  if (!weatherRes.ok) throw new Error('Failed to fetch weather');
-  const weatherJson = await weatherRes.json();
-  const temperature = (weatherJson?.main?.temp ?? null) as number | null;
-  const pressure = (weatherJson?.main?.pressure ?? null) as number | null;
+  const reqPromise = (async () => {
+    const [weatherRes, pollRes] = await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${apiKey}`),
+    ]);
 
-  // Air pollution
-  const pollRes = await fetch(
-    `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${apiKey}`
-  );
-  let components = null;
-  if (pollRes.ok) {
-    const pollJson = await pollRes.json();
-    const comps = pollJson?.list?.[0]?.components;
-    if (comps) {
-      // OpenWeather returns components in μg/m3
-      components = {
-        co: comps.co ?? null,
-        no: comps.no ?? null,
-        no2: comps.no2 ?? null,
-        o3: comps.o3 ?? null,
-        so2: comps.so2 ?? null,
-        pm2_5: comps.pm2_5 ?? null,
-        pm10: comps.pm10 ?? null,
-        nh3: comps.nh3 ?? null,
-      };
+    if (!weatherRes.ok) throw new Error('Failed to fetch weather');
+    const weatherJson = await weatherRes.json();
+    const temperature = (weatherJson?.main?.temp ?? null) as number | null;
+    const pressure = (weatherJson?.main?.pressure ?? null) as number | null;
+
+    let components = null;
+    if (pollRes.ok) {
+      const pollJson = await pollRes.json();
+      const comps = pollJson?.list?.[0]?.components;
+      if (comps) {
+        components = {
+          co: comps.co ?? null,
+          no: comps.no ?? null,
+          no2: comps.no2 ?? null,
+          o3: comps.o3 ?? null,
+          so2: comps.so2 ?? null,
+          pm2_5: comps.pm2_5 ?? null,
+          pm10: comps.pm10 ?? null,
+          nh3: comps.nh3 ?? null,
+        };
+      }
     }
-  }
 
-  return { temperature, pressure, components };
+    const value = { temperature, pressure, components };
+    weatherCache.set(cacheKey, { ts: Date.now(), value });
+    return value;
+  })();
+
+  weatherInFlight.set(cacheKey, reqPromise);
+  try {
+    return await reqPromise;
+  } finally {
+    weatherInFlight.delete(cacheKey);
+  }
 }
 
 // Fetch pollen estimates using Open-Meteo pollen endpoint (best-effort, free)
@@ -61,6 +95,13 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
   tree?: number | null;
   weed?: number | null;
 } | null> {
+  const cacheKey = toCacheKey(lat, lon);
+  const cached = fromTtlCache(pollenCache, cacheKey, POLLEN_CACHE_TTL_MS);
+  if (cached) return cached;
+
+  const inFlight = pollenInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
   // Try with retries and exponential backoff for transient upstream errors
   const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC`;
 
@@ -69,71 +110,91 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
 
   const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.warn(`fetchPollen: Open-Meteo HTTP ${res.status} (attempt ${attempt})`, url);
-        // retry for 5xx, otherwise give up
-        if (res.status >= 500 && attempt < maxAttempts) {
-          await sleep(baseDelay * Math.pow(2, attempt - 1));
-          continue;
+  const reqPromise = (async () => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn(`fetchPollen: Open-Meteo HTTP ${res.status} (attempt ${attempt})`, url);
+          if (res.status >= 500 && attempt < maxAttempts) {
+            await sleep(baseDelay * Math.pow(2, attempt - 1));
+            continue;
+          }
+          const fallback = { grass: 0, tree: 0, weed: 0 };
+          pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+          return fallback;
         }
-        return { grass: 0, tree: 0, weed: 0 };
-      }
 
-      const j = await res.json();
+        const j = await res.json();
+        if (j && (j.error || j.reason || j.detail)) {
+          const reason = j.reason || j.detail || j.error;
+          console.warn(`fetchPollen: Open-Meteo error (attempt ${attempt}):`, reason);
+          if (attempt < maxAttempts) {
+            await sleep(baseDelay * Math.pow(2, attempt - 1));
+            continue;
+          }
+          const fallback = { grass: 0, tree: 0, weed: 0 };
+          pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+          return fallback;
+        }
 
-      // Open-Meteo may return an error object with `error`/`reason` — handle that gracefully
-      if (j && (j.error || j.reason || j.detail)) {
-        const reason = j.reason || j.detail || j.error;
-        console.warn(`fetchPollen: Open-Meteo error (attempt ${attempt}):`, reason);
+        const hourly = j?.hourly;
+        if (!hourly) {
+          const fallback = { grass: 0, tree: 0, weed: 0 };
+          pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+          return fallback;
+        }
+
+        const times: string[] = Array.isArray(hourly.time) ? hourly.time : [];
+        let idx = 0;
+        if (times.length > 0) {
+          const now = new Date();
+          const nowTs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours());
+          let best = 0;
+          let bestDiff = Infinity;
+          for (let i = 0; i < times.length; i++) {
+            const t = times[i];
+            const d = Date.parse(t);
+            if (!isNaN(d)) {
+              const diff = Math.abs(d - nowTs);
+              if (diff < bestDiff) {
+                bestDiff = diff;
+                best = i;
+              }
+            }
+          }
+          idx = best;
+        }
+
+        const value = {
+          grass: Array.isArray(hourly?.grass_pollen) ? hourly.grass_pollen[idx] ?? null : null,
+          tree: Array.isArray(hourly?.tree_pollen) ? hourly.tree_pollen[idx] ?? null : null,
+          weed: Array.isArray(hourly?.weed_pollen) ? hourly.weed_pollen[idx] ?? null : null,
+        };
+        pollenCache.set(cacheKey, { ts: Date.now(), value });
+        return value;
+      } catch (e) {
+        console.warn(`fetchPollen: unexpected error (attempt ${attempt})`, e);
         if (attempt < maxAttempts) {
           await sleep(baseDelay * Math.pow(2, attempt - 1));
           continue;
         }
-        return { grass: 0, tree: 0, weed: 0 };
+        const fallback = { grass: 0, tree: 0, weed: 0 };
+        pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+        return fallback;
       }
-
-      // pick the hourly value closest to now (UTC) if available
-      const hourly = j?.hourly;
-      if (!hourly) return { grass: 0, tree: 0, weed: 0 };
-
-      const times: string[] = Array.isArray(hourly.time) ? hourly.time : [];
-      let idx = 0;
-      if (times.length > 0) {
-        const now = new Date();
-        const nowTs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours());
-        let best = 0;
-        let bestDiff = Infinity;
-        for (let i = 0; i < times.length; i++) {
-          const t = times[i];
-          const d = Date.parse(t);
-          if (!isNaN(d)) {
-            const diff = Math.abs(d - nowTs);
-            if (diff < bestDiff) {
-              bestDiff = diff;
-              best = i;
-            }
-          }
-        }
-        idx = best;
-      }
-
-      const grass = Array.isArray(hourly?.grass_pollen) ? hourly.grass_pollen[idx] ?? null : null;
-      const tree = Array.isArray(hourly?.tree_pollen) ? hourly.tree_pollen[idx] ?? null : null;
-      const weed = Array.isArray(hourly?.weed_pollen) ? hourly.weed_pollen[idx] ?? null : null;
-      return { grass, tree, weed };
-    } catch (e) {
-      console.warn(`fetchPollen: unexpected error (attempt ${attempt})`, e);
-      if (attempt < maxAttempts) {
-        await sleep(baseDelay * Math.pow(2, attempt - 1));
-        continue;
-      }
-      return { grass: 0, tree: 0, weed: 0 };
     }
+    const fallback = { grass: 0, tree: 0, weed: 0 };
+    pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+    return fallback;
+  })();
+
+  pollenInFlight.set(cacheKey, reqPromise);
+  try {
+    return await reqPromise;
+  } finally {
+    pollenInFlight.delete(cacheKey);
   }
-  return { grass: 0, tree: 0, weed: 0 };
 }
 
 // One-hot encode pollen based on provided ranges in particles/m3

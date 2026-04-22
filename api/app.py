@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import threading
 import time
 import requests
+from requests.adapters import HTTPAdapter
 from datetime import datetime, timezone, timedelta
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -44,6 +45,15 @@ for p in MODEL_PATHS:
 
 if artifact is None:
     print("WARNING: No model artifact found.")
+
+PIPELINE = artifact.get('pipeline') if isinstance(artifact, dict) else artifact
+ARTIFACT_FEATURE_NAMES = artifact.get('feature_names') if isinstance(artifact, dict) else None
+PIPELINE_FEATURE_NAMES = list(getattr(PIPELINE, 'feature_names_in_', [])) if PIPELINE is not None and hasattr(PIPELINE, 'feature_names_in_') else None
+PREDICT_COLUMNS = PIPELINE_FEATURE_NAMES or ARTIFACT_FEATURE_NAMES
+
+_http = requests.Session()
+_http.mount("https://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
+_http.mount("http://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
 
 class PredictRequest(BaseModel):
     features: dict
@@ -135,7 +145,7 @@ def send_plain_email(to_email: str, subject: str, body: str) -> bool:
             "api-key": brevo_api_key,
             "Content-Type": "application/json",
         }
-        resp = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
+        resp = _http.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
         if resp.status_code >= 400:
             print(f"Brevo API error ({resp.status_code}): {resp.text}")
             return False
@@ -499,14 +509,8 @@ def predict(req: PredictRequest, x_api_key: str | None = Header(None)):
     if artifact is None:
         raise HTTPException(status_code=500, detail='Model not available on server')
 
-    pipeline = artifact.get('pipeline') if isinstance(artifact, dict) else artifact
-    feature_names = artifact.get('feature_names') if isinstance(artifact, dict) else None
-    
-    pipeline_feature_names = None
-    if hasattr(pipeline, 'feature_names_in_'):
-        pipeline_feature_names = list(getattr(pipeline, 'feature_names_in_'))
-
-    cols_to_use = pipeline_feature_names or feature_names
+    pipeline = PIPELINE
+    cols_to_use = PREDICT_COLUMNS
     if cols_to_use:
         incoming_map = {canonical_name(k): k for k in req.features.keys()}
         row = []
