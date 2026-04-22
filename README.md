@@ -9,6 +9,15 @@ Frontend + backend monorepo for SafeSphere monitoring, prediction, history track
 - Data/Auth: Supabase
 - External APIs: OpenWeatherMap, Brevo
 
+## Latest Optimizations (Overview)
+
+- Frontend data fetches now use lightweight caching and request deduplication to reduce repeated external API calls.
+- Dashboard performance improved with lazy loading for heavier modules, reducing initial bundle size and faster first render.
+- Prediction trigger path avoids short-window duplicate runs for identical input state.
+- Backend prediction endpoint avoids repeated model metadata resolution on each request.
+- Backend email delivery uses connection pooling for lower overhead on outbound email API calls.
+- Prediction risk labels are aligned between frontend and email notifications.
+
 ## Local Setup
 
 ### Frontend
