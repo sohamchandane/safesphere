@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, BrainCircuit, LogOut, MapPin, Sparkles, Wind } from 'lucide-react';
 import { LocationAccess } from '@/components/dashboard/LocationAccess';
-import { WeatherDisplay } from '@/components/dashboard/WeatherDisplay';
+import { WeatherDisplay } from '../components/dashboard/WeatherDisplay';
 import { PollenDisplay } from '@/components/dashboard/PollenDisplay';
 import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
 import { RiskPrediction } from '@/components/dashboard/RiskPrediction';
