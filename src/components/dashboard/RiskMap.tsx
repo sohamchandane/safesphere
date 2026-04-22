@@ -430,7 +430,7 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
           </div>
         </div>
 
-        <div className="rounded-lg border border-border p-3 bg-muted/30 text-sm flex flex-wrap gap-4">
+        <div className="rounded-lg border border-border p-3 bg-muted/30 text-sm flex flex-wrap items-center gap-4">
           <span className="flex items-center gap-2"><span className="legend-dot legend-low" /> Low</span>
           <span className="flex items-center gap-2"><span className="legend-dot legend-moderate" /> Moderate</span>
           <span className="flex items-center gap-2"><span className="legend-dot legend-high" /> High</span>

@@ -49,6 +49,11 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false }: LocationA
           description: 'Please enable location access to use this feature',
           variant: 'destructive',
         });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
       }
     );
   };
@@ -94,8 +99,8 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false }: LocationA
           <div className="space-y-2">
             <p className="text-sm text-success">Location enabled successfully</p>
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span>Latitude: {location.latitude.toFixed(4)}</span>
-              <span>Longitude: {location.longitude.toFixed(4)}</span>
+              <span>Latitude: {location.latitude.toFixed(6)}</span>
+              <span>Longitude: {location.longitude.toFixed(6)}</span>
             </div>
           </div>
         ) : (
