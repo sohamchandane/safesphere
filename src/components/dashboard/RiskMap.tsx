@@ -106,6 +106,12 @@ const normalizeProbability = (value: number | null): number => {
   return value;
 };
 
+const probabilityToColor = (probability: number): string => {
+  const normalized = normalizeProbability(probability);
+  const hue = 120 - normalized * 120;
+  return `hsl(${hue} 85% 45%)`;
+};
+
 const parseTimestamp = (value: string): number => {
   const t = Date.parse(value);
   return Number.isNaN(t) ? 0 : t;
@@ -130,6 +136,15 @@ const markerIcon = (level: RiskLevel, confirmed: boolean): L.DivIcon => {
     html: `<span class="risk-marker risk-${level}${confirmed ? ' risk-confirmed' : ''}"></span>`,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
+  });
+};
+
+const markerDotIcon = (probability: number, confirmed: boolean): L.DivIcon => {
+  return L.divIcon({
+    className: 'risk-marker-wrapper risk-marker-dot-wrapper',
+    html: `<span class="risk-marker risk-marker-dot${confirmed ? ' risk-confirmed' : ''}" style="background-color: ${probabilityToColor(probability)}"></span>`,
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
   });
 };
 
@@ -515,7 +530,7 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
                   <Marker
                     key={`single-${point.id}`}
                     position={[point.lat, point.lng]}
-                    icon={markerIcon(point.riskLevel, point.confirmedAttack)}
+                    icon={markerDotIcon(point.probability, point.confirmedAttack)}
                     eventHandlers={{
                       click: () => {
                         setSelectedEvent(point);
