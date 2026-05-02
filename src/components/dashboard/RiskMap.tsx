@@ -134,8 +134,8 @@ const markerIcon = (level: RiskLevel, confirmed: boolean): L.DivIcon => {
   return L.divIcon({
     className: 'risk-marker-wrapper',
     html: `<span class="risk-marker risk-${level}${confirmed ? ' risk-confirmed' : ''}"></span>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
   });
 };
 
@@ -143,8 +143,8 @@ const markerDotIcon = (probability: number, confirmed: boolean): L.DivIcon => {
   return L.divIcon({
     className: 'risk-marker-wrapper risk-marker-dot-wrapper',
     html: `<span class="risk-marker risk-marker-dot${confirmed ? ' risk-confirmed' : ''}" style="background-color: ${probabilityToColor(probability)}"></span>`,
-    iconSize: [10, 10],
-    iconAnchor: [5, 5],
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
   });
 };
 
