@@ -72,7 +72,6 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
         .order('timestamp', { ascending: false })
         .limit(20);
 
-      // Backward-compatible fallback if reminder_sent_at column is not yet migrated.
       if (error && String(error.message || '').toLowerCase().includes('reminder_sent_at')) {
         const fallback = await supabase
           .from('monitoring_data')
@@ -120,7 +119,6 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
   useEffect(() => {
     fetchPending(true);
 
-    // Keep pending records fresh while user stays logged in.
     const refreshId = window.setInterval(() => {
       fetchPending(false);
     }, 60_000);
@@ -129,7 +127,6 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
   }, [fetchPending]);
 
   useEffect(() => {
-    // Re-evaluate prompt/reminder timing without requiring relogin or reload.
     const tickId = window.setInterval(() => setNowMs(Date.now()), 30_000);
     return () => window.clearInterval(tickId);
   }, []);

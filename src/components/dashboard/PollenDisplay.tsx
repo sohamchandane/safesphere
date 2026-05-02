@@ -27,6 +27,7 @@ export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps
   const [pollen, setPollen] = useState<PollenData | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const panelStyle = useMemo(() => ({ contentVisibility: 'auto', contain: 'layout paint style', containIntrinsicSize: '1px 520px' }), []);
 
   useEffect(() => {
     const loadPollen = async () => {
@@ -81,10 +82,6 @@ export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps
     [pollenEntries]
   );
 
-  const getPollenTone = (key: PollenType) => {
-    return 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20';
-  };
-
   const renderPollenTile = (entry: PollenEntry) => {
     const level = getPollenLevel(entry.value);
 
@@ -100,7 +97,7 @@ export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps
           </div>
           <div className="text-right">
             <p className="text-lg font-bold text-success">{entry.value}</p>
-            <p className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getPollenTone(entry.key)}`}>{entry.label === 'Grass' ? 'Grass' : entry.label === 'Tree' ? 'Tree' : 'Weed'}</p>
+            <p className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700">{entry.label}</p>
           </div>
         </div>
       </div>
@@ -126,9 +123,9 @@ export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps
 
   if (loading) {
     return embedded ? (
-      <div className="text-sm text-muted-foreground">Loading pollen data...</div>
+      <div className="text-sm text-muted-foreground" style={panelStyle}>Loading pollen data...</div>
     ) : (
-      <Card className="shadow-soft border-0">
+      <Card className="border-0 shadow-soft content-visibility-auto" style={panelStyle as any}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Flower2 className="h-5 w-5 text-primary" />
@@ -146,7 +143,7 @@ export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps
 
   if (embedded) {
     return (
-      <div className="space-y-3 rounded-2xl border border-border/70 bg-background/80 p-4 shadow-soft">
+      <div className="space-y-3 rounded-2xl border border-border/70 bg-background/80 p-4 shadow-soft" style={panelStyle}>
         <div className="flex items-center justify-between gap-2">
           <h4 className="flex items-center gap-2 font-semibold text-foreground">
             <Flower2 className="h-4 w-4 text-primary" />
@@ -162,7 +159,7 @@ export const PollenDisplay = ({ location, embedded = false }: PollenDisplayProps
   }
 
   return (
-    <Card className="overflow-hidden border-0 shadow-soft">
+    <Card className="overflow-hidden border-0 shadow-soft content-visibility-auto" style={panelStyle as any}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Flower2 className="h-5 w-5 text-primary" />

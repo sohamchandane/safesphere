@@ -86,7 +86,6 @@ type Hotspot = {
   count: number;
   confirmedCount: number;
   avgProbability: number;
-  maxProbability: number;
   latestTimestamp: string;
 };
 
@@ -324,7 +323,7 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
 
   const hotspotData = useMemo(() => {
     const meters = 150;
-    const aggregates = new Map<string, { sumLat: number; sumLng: number; count: number; probSum: number; maxProb: number; confirmedCount: number; latestTs: string }>();
+    const aggregates = new Map<string, { sumLat: number; sumLng: number; count: number; probSum: number; confirmedCount: number; latestTs: string }>();
 
     for (const point of filteredPoints) {
       const latStep = meters / 111_320;
@@ -340,7 +339,6 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
           sumLng: point.lng,
           count: 1,
           probSum: point.probability,
-          maxProb: point.probability,
           confirmedCount: point.confirmedAttack ? 1 : 0,
           latestTs: point.timestamp,
         });
@@ -351,7 +349,6 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
       existing.sumLng += point.lng;
       existing.count += 1;
       existing.probSum += point.probability;
-      existing.maxProb = Math.max(existing.maxProb, point.probability);
       existing.confirmedCount += point.confirmedAttack ? 1 : 0;
       if (parseTimestamp(point.timestamp) > parseTimestamp(existing.latestTs)) {
         existing.latestTs = point.timestamp;
@@ -367,7 +364,6 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
         count: agg.count,
         confirmedCount: agg.confirmedCount,
         avgProbability: agg.probSum / agg.count,
-        maxProbability: agg.maxProb,
         latestTimestamp: agg.latestTs,
       });
     }

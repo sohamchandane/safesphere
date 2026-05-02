@@ -36,7 +36,6 @@ const fromTtlCache = <T>(store: Map<string, { ts: number; value: T }>, key: stri
   return hit.value;
 };
 
-// Fetch weather (temperature, pressure) and air pollution components from OpenWeatherMap
 export async function fetchWeatherAndPollution(lat: number, lon: number): Promise<WeatherPollution> {
   const cacheKey = toCacheKey(lat, lon);
   const cached = fromTtlCache(weatherCache, cacheKey, WEATHER_CACHE_TTL_MS);
@@ -65,7 +64,6 @@ export async function fetchWeatherAndPollution(lat: number, lon: number): Promis
       const pollJson = await pollRes.json();
       const pollData = pollJson?.list?.[0];
       
-      // Extract components
       const comps = pollData?.components;
       if (comps) {
         components = {
@@ -80,17 +78,14 @@ export async function fetchWeatherAndPollution(lat: number, lon: number): Promis
         };
       }
 
-      // Extract AQI (OpenWeatherMap returns 1-5, convert to 0-500 EPA scale)
       const aqiValue = pollData?.main?.aqi;
       if (aqiValue) {
-        // Map OpenWeather AQI (1-5) to EPA AQI (0-500)
-        // 1 = Good (0-50), 2 = Fair (51-100), 3 = Moderate (101-150), 4 = Poor (151-200), 5 = Very Poor (201-300+)
         const aqiMap: Record<number, number> = {
-          1: 25,   // Good
-          2: 75,   // Fair
-          3: 125,  // Moderate
-          4: 175,  // Poor
-          5: 300,  // Very Poor
+          1: 25,
+          2: 75,
+          3: 125,
+          4: 175,
+          5: 300,
         };
         aqi = aqiMap[aqiValue] ?? null;
       }
@@ -109,7 +104,6 @@ export async function fetchWeatherAndPollution(lat: number, lon: number): Promis
   }
 }
 
-// Fetch pollen estimates using Open-Meteo pollen endpoint (best-effort, free)
 export async function fetchPollen(lat: number, lon: number): Promise<{
   grass?: number | null;
   tree?: number | null;
@@ -122,7 +116,6 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
   const inFlight = pollenInFlight.get(cacheKey);
   if (inFlight) return inFlight;
 
-  // Try with retries and exponential backoff for transient upstream errors
   const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC`;
 
   const maxAttempts = 3;

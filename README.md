@@ -1,24 +1,29 @@
-# SafeSphere
+﻿# SafeSphere
 
-Frontend + backend monorepo for SafeSphere monitoring, prediction, history tracking, and follow-up workflows.
+SafeSphere is a personal asthma-risk monitoring app that helps users understand how weather, air quality, pollen, heart rate, and past predictions combine into a clearer picture of day-to-day risk.
 
-## Stack
+## What users get
+
+- A guided dashboard that walks through location, weather, pollen, heart rate, and risk prediction in one flow.
+- A live risk card that summarizes the current prediction in plain language.
+- A map view of past events with filters for date, confidence bands, and time of day.
+- A follow-up prompt that asks whether a prediction matched reality, so the history stays useful over time.
+- A cleaner environmental view that turns weather and pollen into easy-to-scan cards instead of raw numbers.
+
+## Why it is useful
+
+- It turns several health and environment signals into something actionable.
+- It gives a quick answer for the present moment and a longer-term history for patterns.
+- It is designed to stay responsive while still showing rich context.
+
+## Tech stack
 
 - Frontend: React, TypeScript, Vite, Tailwind, shadcn/ui
 - Backend: FastAPI, scikit-learn, pandas, NumPy
-- Data/Auth: Supabase
-- External APIs: OpenWeatherMap, Brevo
+- Auth and data: Supabase
+- External data: OpenWeatherMap, Open-Meteo, Brevo
 
-## Latest Optimizations (Overview)
-
-- Frontend data fetches now use lightweight caching and request deduplication to reduce repeated external API calls.
-- Dashboard performance improved with lazy loading for heavier modules, reducing initial bundle size and faster first render.
-- Prediction trigger path avoids short-window duplicate runs for identical input state.
-- Backend prediction endpoint avoids repeated model metadata resolution on each request.
-- Backend email delivery uses connection pooling for lower overhead on outbound email API calls.
-- Prediction risk labels are aligned between frontend and email notifications.
-
-## Local Setup
+## Run locally
 
 ### Frontend
 
@@ -27,13 +32,13 @@ npm ci
 npm run dev
 ```
 
-Root `.env` (minimum):
+Minimum frontend env vars:
 
 ```env
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 VITE_OPENWEATHER_API_KEY=...
-VITE_PRED_API_URL=http://localhost:8000/predict
+VITE_PRED_API_URL=https://your-backend-domain/predict
 VITE_PRED_API_KEY=...
 VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES=10
 VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES=10
@@ -49,7 +54,7 @@ pip install -r requirements.txt
 uvicorn app:app --reload --port 8000
 ```
 
-`api/.env` (minimum):
+Minimum backend env vars:
 
 ```env
 SUPABASE_URL=...
@@ -63,7 +68,7 @@ ENABLE_BACKGROUND_REMINDER_SWEEP=true
 GROUND_TRUTH_SWEEP_INTERVAL_SECONDS=60
 ```
 
-## Backend Endpoints
+## Main backend routes
 
 - `POST /predict`
 - `POST /register`
@@ -72,27 +77,9 @@ GROUND_TRUTH_SWEEP_INTERVAL_SECONDS=60
 - `POST /ground-truth/reminder-sweep`
 - `GET /ground-truth/reminder-status`
 
-## Follow-up Reminder Behavior
-
-- Reminder email is sent only for the latest unanswered prediction per user.
-- Older unanswered predictions are handled in the frontend follow-up UI.
-- Background sweep interval and delay are controlled via backend env variables.
-
-## Risk Map
-
-- Dashboard includes a user-private Risk Map based on `monitoring_data` coordinates.
-- Layer A: predicted events (all predictions), Layer B: confirmed attacks (`ground_truth=true`).
-- Filters: date range, risk bands, event layer, and time-of-day.
-- Low zoom uses hotspot aggregation (~150m grid), mid zoom uses marker clustering, high zoom shows individual markers.
-- Marker details include timestamp, probability, prediction/confirmation flags, location, and available health/environment factors.
-- No extra map API key is required (OpenStreetMap tiles).
-
-### Required DB Migration
-
-Apply the migration in `supabase/migrations/20260414_add_monitoring_data_map_indexes.sql` to improve map query performance.
-
-## Deployment Notes
+## Deployment notes
 
 - Frontend build output is `dist`.
 - Backend service root is `api`.
-- Keep secrets in deployment environment variables; do not commit real secrets.
+- Use HTTPS for deployed frontend-to-backend traffic.
+- Keep secrets in deployment environment variables.

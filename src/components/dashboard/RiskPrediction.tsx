@@ -29,7 +29,6 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
     const runKey = `${userId}:${location.latitude.toFixed(4)}:${location.longitude.toFixed(4)}:${roundedHeartRate}`;
     const now = Date.now();
 
-    // Skip duplicate runs from incidental rerenders in a short window.
     if (lastRunRef.current && lastRunRef.current.key === runKey && now - lastRunRef.current.ts < 30_000) {
       return;
     }
@@ -39,20 +38,16 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
       try {
         setLoading(true);
 
-        // Fetch weather and pollen in parallel. Isolate pollen failures so they
-        // cannot block weather or the prediction flow.
         const [wpResult, pollenResult] = await Promise.allSettled([
           externalApis.fetchWeatherAndPollution(location.latitude, location.longitude),
           externalApis.fetchPollen(location.latitude, location.longitude),
         ]);
 
         if (wpResult.status === 'rejected') {
-          // Weather is essential for the model — surface a clear error
           throw new Error(`Weather fetch failed: ${wpResult.reason?.message || String(wpResult.reason)}`);
         }
         const wp = wpResult.value as any;
 
-        // pollen may fail; use fallback zeros when it does
         let pollen: { grass?: number | null; tree?: number | null; weed?: number | null } | null = null;
         if (pollenResult.status === 'fulfilled') {
           pollen = pollenResult.value as any;
@@ -66,22 +61,16 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
         const treeOH = externalApis.oneHotPollen(pollen?.tree ?? null, 'tree');
         const weedOH = externalApis.oneHotPollen(pollen?.weed ?? null, 'weed');
 
-        // Build features payload: ensure `user_key` is numeric.
-        // If the authenticated user id is numeric, use it. Otherwise compute a deterministic
-        // numeric id from the UUID/string so each user maps to a stable integer.
         const toDeterministicInt = (s: string | number | undefined) => {
           if (s === undefined || s === null) return 447;
-          // if already numeric string or number, use it
           const n = Number(s);
           if (Number.isFinite(n)) return n;
           const str = String(s);
-          // FNV-1a 32-bit hash
           let h = 2166136261 >>> 0;
           for (let i = 0; i < str.length; i++) {
             h ^= str.charCodeAt(i);
             h = Math.imul(h, 16777619) >>> 0;
           }
-          // keep positive and restrict range
           return (h >>> 0) % 1000000000;
         };
 
@@ -89,7 +78,6 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
 
         const payload: any = {
           user_key: userKeyValue,
-          // may be null from upstream - sanitize below
           temperature: wp.temperature,
           pressure: wp.pressure,
           co: wp.components?.co ?? null,
@@ -113,7 +101,6 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           weed_pollen_Very_High: weedOH.very_high,
         };
 
-        // Sanitize numeric fields so the model and DB never receive nulls.
         const toNumberOrZero = (v: any) => {
           if (v === null || v === undefined) return 0;
           const n = Number(v);
@@ -143,12 +130,10 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           weed_pollen_Low: toNumberOrZero(payload.weed_pollen_Low),
           weed_pollen_Moderate: toNumberOrZero(payload.weed_pollen_Moderate),
           weed_pollen_Very_High: toNumberOrZero(payload.weed_pollen_Very_High),
-          // Add location data for display in email if needed (even if not used by model pipeline)
           latitude: location.latitude,
           longitude: location.longitude,
         };
 
-        // Call backend prediction API (assumes /api/predict exists and uses API key)
         const apiUrl = getApiUrl();
         const apiKey = getApiKey();
 
@@ -166,11 +151,9 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
         });
 
         if (!resp.ok) {
-          // try to extract a helpful error message from the response
           let errText = '';
           try {
             const t = await resp.text();
-            // try parse json if possible
             try {
               const j = JSON.parse(t);
               errText = j.detail || j.error || JSON.stringify(j);
@@ -185,7 +168,6 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
 
         const result = await resp.json();
 
-        // result is expected to be { probability: number, risk_class: 0|1 }
         const risk = result.risk_class === 1 || (result.probability ?? 0) >= 0.5;
         const confidence = typeof result.probability === 'number' ? result.probability : 0;
         const riskLevel = confidence >= 0.75 ? 'high' : confidence >= 0.5 ? 'moderate' : 'low';
@@ -193,13 +175,11 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
         const finalPred = { risk, confidence, riskLevel } as any;
         setPrediction(finalPred);
 
-        // Save to monitoring_data table (fail-soft)
         try {
           const hasSupabase = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
           if (!hasSupabase) {
             console.info('Supabase not configured — skipping persistence of monitoring data');
           } else {
-            // Extract individual fields from sanitizedPayload to store in separate columns
             const monitoringRecord = {
               user_id: userId,
               latitude: location.latitude,
@@ -214,8 +194,6 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
               pm2_5: sanitizedPayload.pm2_5,
               pm10: sanitizedPayload.pm10,
               nh3: sanitizedPayload.nh3,
-              // Pollen: reverse-engineer from one-hot encoding (low=1 means low level, etc)
-              // For simplicity, store the one-hot values; alternatively could denormalize to raw counts
               grass_pollen: null, // Could store count if available
               tree_pollen: null,
               weed_pollen: null,

@@ -288,7 +288,7 @@ export const WeatherDisplay = ({ location, embedded = false }: WeatherDisplayPro
   }
 
   return (
-    <Card className="border-0 shadow-soft">
+    <Card className="border-0 shadow-soft content-visibility-auto">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Cloud className="h-5 w-5 text-primary" />

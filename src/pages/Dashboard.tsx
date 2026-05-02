@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,44 @@ const RiskMap = lazy(() => import('@/components/dashboard/RiskMap').then((mod) =
 const AttackHistory = lazy(() =>
   import('@/components/dashboard/AttackHistory').then((mod) => ({ default: mod.AttackHistory }))
 );
+
+const DeferredSection = ({
+  children,
+  fallback,
+}: {
+  children: React.ReactNode;
+  fallback: React.ReactNode;
+}) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const sectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isVisible) return;
+
+    const element = sectionRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '300px 0px' }
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [isVisible]);
+
+  return (
+    <div ref={sectionRef} className="content-visibility-auto">
+      {isVisible ? children : fallback}
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const { user, loading, signOut } = useAuth();
@@ -72,7 +110,6 @@ const Dashboard = () => {
           </Button>
         </header>
 
-        {/* Combined Environmental Monitoring Card */}
         <section className="mb-8">
           <Card className="overflow-hidden border-border/70 bg-card/85 shadow-elevation backdrop-blur">
             <CardHeader className="space-y-4 border-b border-border/50 bg-gradient-to-br from-primary/8 via-transparent to-accent/8">
@@ -103,7 +140,6 @@ const Dashboard = () => {
             </CardHeader>
 
             <CardContent className="space-y-6 p-6">
-              {/* Location subsection */}
               <div className="space-y-3">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <MapPin className="h-4 w-4 text-primary" />
@@ -114,7 +150,6 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Weather subsection */}
               {location && (
                 <div className="space-y-3">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -125,7 +160,6 @@ const Dashboard = () => {
                 </div>
               )}
 
-              {/* Pollen subsection */}
               {location && (
                 <div className="space-y-3">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -139,7 +173,6 @@ const Dashboard = () => {
           </Card>
         </section>
 
-        {/* Live Session Workflow Section */}
         <div id="dashboard-workflow" className="space-y-8">
           <section className="w-full">
             <HeartRateMonitor
@@ -165,29 +198,49 @@ const Dashboard = () => {
             onAnswered={() => setHistoryRefreshKey((prev) => prev + 1)}
           />
 
-          <Suspense
+          <DeferredSection
             fallback={
               <Card className="shadow-soft border-0">
                 <CardHeader>
-                  <CardTitle>Loading map insights...</CardTitle>
+                  <CardTitle>Map insights will load when visible</CardTitle>
                 </CardHeader>
               </Card>
             }
           >
-            <RiskMap userId={user.id} refreshKey={historyRefreshKey} />
-          </Suspense>
+            <Suspense
+              fallback={
+                <Card className="shadow-soft border-0">
+                  <CardHeader>
+                    <CardTitle>Loading map insights...</CardTitle>
+                  </CardHeader>
+                </Card>
+              }
+            >
+              <RiskMap userId={user.id} refreshKey={historyRefreshKey} />
+            </Suspense>
+          </DeferredSection>
 
-          <Suspense
+          <DeferredSection
             fallback={
               <Card className="shadow-soft border-0">
                 <CardHeader>
-                  <CardTitle>Loading attack history...</CardTitle>
+                  <CardTitle>Attack history will load when visible</CardTitle>
                 </CardHeader>
               </Card>
             }
           >
-            <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />
-          </Suspense>
+            <Suspense
+              fallback={
+                <Card className="shadow-soft border-0">
+                  <CardHeader>
+                    <CardTitle>Loading attack history...</CardTitle>
+                  </CardHeader>
+                </Card>
+              }
+            >
+              <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />
+            </Suspense>
+          </DeferredSection>
         </div>
       </div>
     </div>

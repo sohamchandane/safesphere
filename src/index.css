@@ -264,6 +264,11 @@ All colors MUST be HSL.
     animation-delay: 120ms;
   }
 
+  .content-visibility-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 1200px;
+  }
+
   .risk-map-canvas {
     height: 520px;
     width: 100%;
