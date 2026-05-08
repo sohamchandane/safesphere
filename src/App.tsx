@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UiPreferencesControls } from "@/components/app/UiPreferencesControls";
 import { useUiPreferences } from "@/hooks/use-ui-preferences";
+import { useTranslation } from "react-i18next";
 
 const Index = lazy(() => import("./pages/Index"));
 const Auth = lazy(() => import("./pages/Auth"));
@@ -17,7 +18,17 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const queryClient = new QueryClient();
 
 const App = () => {
-  const { themeMode, setThemeMode, visionMode, setVisionMode, visionModeLabels } = useUiPreferences();
+  const { t } = useTranslation();
+  const {
+    themeMode,
+    setThemeMode,
+    visionMode,
+    setVisionMode,
+    visionModeLabels,
+    language,
+    setLanguage,
+    languageLabels,
+  } = useUiPreferences();
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -32,11 +43,14 @@ const App = () => {
               visionMode={visionMode}
               onVisionModeChange={setVisionMode}
               visionModeLabels={visionModeLabels}
+              language={language}
+              onLanguageChange={setLanguage}
+              languageLabels={languageLabels}
             />
             <Suspense
               fallback={
                 <div className="min-h-screen flex items-center justify-center bg-gradient-subtle text-muted-foreground">
-                  Loading...
+                  {t("app.loading")}
                 </div>
               }
             >

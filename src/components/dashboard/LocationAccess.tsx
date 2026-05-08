@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { MapPin, CheckCircle, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 
 interface LocationAccessProps {
   onLocationUpdate: (location: { latitude: number; longitude: number }) => void;
@@ -11,6 +12,7 @@ interface LocationAccessProps {
 }
 
 export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordinates = true }: LocationAccessProps) => {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const { toast } = useToast();
@@ -20,8 +22,8 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordin
     
     if (!navigator.geolocation) {
       toast({
-        title: 'Location not supported',
-        description: 'Your browser does not support geolocation',
+        title: t('location.notSupported'),
+        description: t('location.notSupportedDesc'),
         variant: 'destructive',
       });
       setStatus('denied');
@@ -38,16 +40,16 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordin
         setStatus('granted');
         onLocationUpdate(loc);
         toast({
-          title: 'Location accessed',
-          description: 'Successfully retrieved your location',
+          title: t('location.success'),
+          description: t('location.successDesc'),
         });
       },
       (error) => {
         console.error('Location error:', error);
         setStatus('denied');
         toast({
-          title: 'Location access denied',
-          description: 'Please enable location access to use this feature',
+          title: t('location.denied'),
+          description: t('location.deniedDesc'),
           variant: 'destructive',
         });
       },
@@ -60,7 +62,6 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordin
   };
 
   useEffect(() => {
-    // Auto-request location on mount
     requestLocation();
   }, []);
 
@@ -70,10 +71,10 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordin
         <div>
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-primary" />
-            Location Access
+            {t('location.title')}
           </CardTitle>
           <CardDescription>
-            Required to fetch weather and pollen data for your area
+            {t('location.description')}
           </CardDescription>
         </div>
         {status === 'granted' && (
@@ -87,30 +88,30 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordin
       <div className="mt-4">
         {status === 'idle' || status === 'requesting' ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">Requesting location access...</p>
+            <p className="text-sm text-muted-foreground">{t('location.requesting')}</p>
             <Button 
               onClick={requestLocation}
               disabled={status === 'requesting'}
               className="bg-gradient-hero"
             >
-              Enable Location
+              {t('location.enable')}
             </Button>
           </div>
         ) : status === 'granted' && location ? (
           <div className="space-y-2">
-            <p className="text-sm text-success">Location enabled successfully</p>
+            <p className="text-sm text-success">{t('location.enabled')}</p>
             {showCoordinates && (
               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                <span>Latitude: {location.latitude.toFixed(6)}</span>
-                <span>Longitude: {location.longitude.toFixed(6)}</span>
+                <span>{t('dashboard.latitude')}: {location.latitude.toFixed(6)}</span>
+                <span>{t('dashboard.longitude')}: {location.longitude.toFixed(6)}</span>
               </div>
             )}
           </div>
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-destructive">Location access denied</p>
+            <p className="text-sm text-destructive">{t('location.denied')}</p>
             <Button onClick={requestLocation} variant="outline">
-              Try Again
+              {t('location.tryAgain')}
             </Button>
           </div>
         )}
@@ -129,10 +130,10 @@ export const LocationAccess = ({ onLocationUpdate, embedded = false, showCoordin
           <div>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5 text-primary" />
-              Location Access
+              {t('location.title')}
             </CardTitle>
             <CardDescription>
-              Required to fetch weather and pollen data for your area
+              {t('location.description')}
             </CardDescription>
           </div>
           {status === 'granted' && (

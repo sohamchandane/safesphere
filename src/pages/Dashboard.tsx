@@ -10,6 +10,7 @@ import { PollenDisplay } from '@/components/dashboard/PollenDisplay';
 import { HeartRateMonitor } from '@/components/dashboard/HeartRateMonitor';
 import { RiskPrediction } from '@/components/dashboard/RiskPrediction';
 import { GroundTruthFollowup } from '@/components/dashboard/GroundTruthFollowup';
+import { useTranslation } from 'react-i18next';
 
 const RiskMap = lazy(() => import('@/components/dashboard/RiskMap').then((mod) => ({ default: mod.RiskMap })));
 const AttackHistory = lazy(() =>
@@ -55,6 +56,7 @@ const DeferredSection = ({
 };
 
 const Dashboard = () => {
+  const { t } = useTranslation();
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -99,14 +101,14 @@ const Dashboard = () => {
               <Activity className="h-6 w-6 text-white" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">SafeSphere Dashboard</p>
-              <h1 className="text-xl font-bold text-foreground">Welcome back, {username}</h1>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">{t('dashboard.title')}</p>
+              <h1 className="text-xl font-bold text-foreground">{t('dashboard.welcomeBack', { name: username })}</h1>
             </div>
           </div>
 
           <Button variant="outline" onClick={handleSignOut} className="self-start rounded-xl sm:self-auto">
             <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
+            {t('dashboard.signOut')}
           </Button>
         </header>
 
@@ -115,25 +117,25 @@ const Dashboard = () => {
             <CardHeader className="space-y-4 border-b border-border/50 bg-gradient-to-br from-primary/8 via-transparent to-accent/8">
               <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 <Sparkles className="h-3.5 w-3.5" />
-                Environmental Monitoring
+                {t('dashboard.environmentalMonitoring')}
               </div>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-2">
-                  <CardTitle className="text-2xl sm:text-3xl">Weather Data</CardTitle>
+                  <CardTitle className="text-2xl sm:text-3xl">{t('dashboard.weatherData')}</CardTitle>
                   <CardDescription className="text-sm sm:text-base">
-                    Location, weather conditions, and pollen levels for your area
+                    {t('dashboard.weatherDesc')}
                   </CardDescription>
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-background/70 px-4 py-3 lg:min-w-[320px]">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location Details</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('dashboard.locationDetails')}</p>
                   {location ? (
                     <div className="mt-2 grid gap-1 text-sm sm:text-base">
-                      <p className="font-medium text-foreground">Latitude: {location.latitude.toFixed(6)}</p>
-                      <p className="font-medium text-foreground">Longitude: {location.longitude.toFixed(6)}</p>
+                      <p className="font-medium text-foreground">{t('dashboard.latitude')}: {location.latitude.toFixed(6)}</p>
+                      <p className="font-medium text-foreground">{t('dashboard.longitude')}: {location.longitude.toFixed(6)}</p>
                     </div>
                   ) : (
-                    <p className="mt-2 text-sm text-muted-foreground">Enable location to display coordinates.</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{t('dashboard.enableLocationHint')}</p>
                   )}
                 </div>
               </div>
@@ -143,7 +145,7 @@ const Dashboard = () => {
               <div className="space-y-3">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <MapPin className="h-4 w-4 text-primary" />
-                  Location
+                  {t('dashboard.location')}
                 </h3>
                 <div className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-soft">
                   <LocationAccess onLocationUpdate={setLocation} embedded showCoordinates={false} />
@@ -154,7 +156,7 @@ const Dashboard = () => {
                 <div className="space-y-3">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <Wind className="h-4 w-4 text-primary" />
-                    Weather Conditions
+                    {t('dashboard.weatherConditions')}
                   </h3>
                   <WeatherDisplay location={location} embedded />
                 </div>
@@ -164,7 +166,7 @@ const Dashboard = () => {
                 <div className="space-y-3">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <BrainCircuit className="h-4 w-4 text-primary" />
-                    Pollen Data
+                    {t('dashboard.pollenData')}
                   </h3>
                   <PollenDisplay location={location} embedded />
                 </div>
@@ -202,7 +204,7 @@ const Dashboard = () => {
             fallback={
               <Card className="shadow-soft border-0">
                 <CardHeader>
-                  <CardTitle>Map insights will load when visible</CardTitle>
+                  <CardTitle>{t('dashboard.mapDeferred')}</CardTitle>
                 </CardHeader>
               </Card>
             }
@@ -211,7 +213,7 @@ const Dashboard = () => {
               fallback={
                 <Card className="shadow-soft border-0">
                   <CardHeader>
-                    <CardTitle>Loading map insights...</CardTitle>
+                    <CardTitle>{t('dashboard.mapLoading')}</CardTitle>
                   </CardHeader>
                 </Card>
               }
@@ -224,7 +226,7 @@ const Dashboard = () => {
             fallback={
               <Card className="shadow-soft border-0">
                 <CardHeader>
-                  <CardTitle>Attack history will load when visible</CardTitle>
+                  <CardTitle>{t('dashboard.historyDeferred')}</CardTitle>
                 </CardHeader>
               </Card>
             }
@@ -233,7 +235,7 @@ const Dashboard = () => {
               fallback={
                 <Card className="shadow-soft border-0">
                   <CardHeader>
-                    <CardTitle>Loading attack history...</CardTitle>
+                    <CardTitle>{t('dashboard.historyLoading')}</CardTitle>
                   </CardHeader>
                 </Card>
               }

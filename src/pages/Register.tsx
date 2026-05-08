@@ -3,8 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { RegisterForm } from '@/components/auth/RegisterForm';
 import { HeartPulse } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const Register = () => {
+  const { t } = useTranslation();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -29,9 +31,9 @@ const Register = () => {
       <div className="w-full max-w-2xl space-y-4">
         <RegisterForm />
         <div className="text-center text-sm">
-          <span className="text-muted-foreground">Already have an account? </span>
+          <span className="text-muted-foreground">{t('register.alreadyAccount')} </span>
           <Link to="/auth" className="text-primary hover:underline font-medium">
-            Sign in
+            {t('register.signIn')}
           </Link>
         </div>
       </div>

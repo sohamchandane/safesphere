@@ -7,8 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Activity, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export const LoginForm = () => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,14 +30,14 @@ export const LoginForm = () => {
       if (error) throw error;
 
       toast({
-        title: 'Welcome back!',
-        description: 'You have successfully logged in.',
+        title: t('auth.welcomeBackToast'),
+        description: t('auth.loginSuccessToast'),
       });
       navigate('/dashboard');
     } catch (error: any) {
       toast({
-        title: 'Login failed',
-        description: error.message || 'Invalid email or password',
+        title: t('auth.loginFailed'),
+        description: error.message || t('auth.invalidCredentials'),
         variant: 'destructive',
       });
     } finally {
@@ -51,13 +53,13 @@ export const LoginForm = () => {
             <Activity className="h-8 w-8 text-white" />
           </div>
         </div>
-        <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
-        <CardDescription>Sign in to your asthma monitoring account</CardDescription>
+        <CardTitle className="text-2xl font-bold">{t('auth.welcomeBack')}</CardTitle>
+        <CardDescription>{t('auth.signInDescription')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t('auth.email')}</Label>
             <Input
               id="email"
               type="email"
@@ -70,7 +72,7 @@ export const LoginForm = () => {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t('auth.password')}</Label>
             <Input
               id="password"
               type="password"
@@ -90,16 +92,16 @@ export const LoginForm = () => {
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing in...
+                {t('auth.signingIn')}
               </>
             ) : (
-              'Sign In'
+              t('auth.signIn')
             )}
           </Button>
           <div className="text-center text-sm">
-            <span className="text-muted-foreground">Don't have an account? </span>
+            <span className="text-muted-foreground">{t('auth.noAccount')} </span>
             <Link to="/register" className="text-primary hover:underline font-medium">
-              Register
+              {t('auth.register')}
             </Link>
           </div>
         </form>

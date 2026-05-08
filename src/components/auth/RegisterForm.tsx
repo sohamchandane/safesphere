@@ -7,6 +7,7 @@ import { Activity, ArrowRight, ArrowLeft } from 'lucide-react';
 import { PersonalInfoStep } from './register/PersonalInfoStep';
 import { MedicalHistoryStep } from './register/MedicalHistoryStep';
 import { getApiBaseUrl } from '@/lib/runtimeConfig';
+import { useTranslation } from 'react-i18next';
 
 interface PersonalInfo {
   email: string;
@@ -31,6 +32,7 @@ interface MedicalHistory {
 }
 
 export const RegisterForm = () => {
+  const { t } = useTranslation();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
@@ -61,7 +63,6 @@ export const RegisterForm = () => {
     setLoading(true);
 
     try {
-      // Call the backend registration API (which uses service role to bypass RLS)
       const baseUrl = getApiBaseUrl();
       const registerUrl = `${baseUrl}/register`;
 
@@ -102,16 +103,16 @@ export const RegisterForm = () => {
       await response.json();
 
       toast({
-        title: 'Registration successful!',
-        description: 'Your account has been created. Please check your email to confirm.',
+        title: t('register.registrationSuccess'),
+        description: t('register.registrationSuccessDesc'),
       });
 
       navigate('/auth');
     } catch (error: any) {
       console.error('Registration error:', error);
       toast({
-        title: 'Registration failed',
-        description: error.message || 'An error occurred during registration',
+        title: t('register.registrationFailed'),
+        description: error.message || t('register.registrationFailedDesc'),
         variant: 'destructive',
       });
     } finally {
@@ -127,9 +128,9 @@ export const RegisterForm = () => {
             <Activity className="h-8 w-8 text-white" />
           </div>
         </div>
-        <CardTitle className="text-2xl font-bold">Create Your Account</CardTitle>
+        <CardTitle className="text-2xl font-bold">{t('register.createAccount')}</CardTitle>
         <CardDescription>
-          Step {step} of 2: {step === 1 ? 'Personal Information' : 'Medical History'}
+          {t('register.stepOf', { step })}: {step === 1 ? t('register.personalInformation') : t('register.medicalHistory')}
         </CardDescription>
         <div className="flex gap-2 mt-4">
           <div className={`h-2 flex-1 rounded-full transition-colors ${step >= 1 ? 'bg-primary' : 'bg-muted'}`} />
@@ -159,7 +160,7 @@ export const RegisterForm = () => {
               className="flex-1"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
+              {t('register.back')}
             </Button>
           )}
           {step < 2 ? (
@@ -168,7 +169,7 @@ export const RegisterForm = () => {
               onClick={() => setStep(step + 1)}
               className="flex-1 bg-gradient-hero hover:opacity-90"
             >
-              Next
+              {t('register.next')}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
@@ -178,7 +179,7 @@ export const RegisterForm = () => {
               disabled={loading}
               className="flex-1 bg-gradient-hero hover:opacity-90"
             >
-              {loading ? 'Creating Account...' : 'Complete Registration'}
+              {loading ? t('register.creatingAccount') : t('register.completeRegistration')}
             </Button>
           )}
         </div>
