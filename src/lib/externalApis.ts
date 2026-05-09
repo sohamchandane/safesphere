@@ -18,6 +18,7 @@ export type WeatherPollution = {
 
 const WEATHER_CACHE_TTL_MS = 2 * 60 * 1000;
 const POLLEN_CACHE_TTL_MS = 30 * 60 * 1000;
+const PERSISTED_CACHE_PREFIX = 'external-api-cache:';
 
 const weatherCache = new Map<string, { ts: number; value: WeatherPollution }>();
 const pollenCache = new Map<string, { ts: number; value: { grass?: number | null; tree?: number | null; weed?: number | null } | null }>();
@@ -36,10 +37,48 @@ const fromTtlCache = <T>(store: Map<string, { ts: number; value: T }>, key: stri
   return hit.value;
 };
 
+const isBrowser = (): boolean => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const isOnline = (): boolean => {
+  if (!isBrowser()) return true;
+  return window.navigator.onLine;
+};
+
+const readPersistedCache = <T>(cacheName: string, key: string, ttlMs: number): T | null => {
+  if (!isBrowser()) return null;
+
+  try {
+    const raw = window.localStorage.getItem(`${PERSISTED_CACHE_PREFIX}${cacheName}:${key}`);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as { ts?: number; value?: T };
+    if (!parsed || typeof parsed.ts !== 'number') return null;
+    if (Date.now() - parsed.ts > ttlMs) return null;
+
+    return parsed.value ?? null;
+  } catch (error) {
+    console.warn(`Failed to read ${cacheName} cache`, error);
+    return null;
+  }
+};
+
+const writePersistedCache = <T>(cacheName: string, key: string, value: T): void => {
+  if (!isBrowser()) return;
+
+  try {
+    window.localStorage.setItem(`${PERSISTED_CACHE_PREFIX}${cacheName}:${key}`, JSON.stringify({ ts: Date.now(), value }));
+  } catch (error) {
+    console.warn(`Failed to persist ${cacheName} cache`, error);
+  }
+};
+
 export async function fetchWeatherAndPollution(lat: number, lon: number): Promise<WeatherPollution> {
   const cacheKey = toCacheKey(lat, lon);
   const cached = fromTtlCache(weatherCache, cacheKey, WEATHER_CACHE_TTL_MS);
   if (cached) return cached;
+
+  const persisted = readPersistedCache<WeatherPollution>('weather', cacheKey, 24 * 60 * 60 * 1000);
+  if (!isOnline() && persisted) return persisted;
 
   const inFlight = weatherInFlight.get(cacheKey);
   if (inFlight) return inFlight;
@@ -93,6 +132,7 @@ export async function fetchWeatherAndPollution(lat: number, lon: number): Promis
 
     const value = { temperature, pressure, aqi, components };
     weatherCache.set(cacheKey, { ts: Date.now(), value });
+    writePersistedCache('weather', cacheKey, value);
     return value;
   })();
 
@@ -112,6 +152,13 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
   const cacheKey = toCacheKey(lat, lon);
   const cached = fromTtlCache(pollenCache, cacheKey, POLLEN_CACHE_TTL_MS);
   if (cached) return cached;
+
+  const persisted = readPersistedCache<{ grass?: number | null; tree?: number | null; weed?: number | null } | null>(
+    'pollen',
+    cacheKey,
+    24 * 60 * 60 * 1000
+  );
+  if (!isOnline() && persisted) return persisted;
 
   const inFlight = pollenInFlight.get(cacheKey);
   if (inFlight) return inFlight;
@@ -135,6 +182,7 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
           }
           const fallback = { grass: 0, tree: 0, weed: 0 };
           pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+          writePersistedCache('pollen', cacheKey, fallback);
           return fallback;
         }
 
@@ -148,6 +196,7 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
           }
           const fallback = { grass: 0, tree: 0, weed: 0 };
           pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+          writePersistedCache('pollen', cacheKey, fallback);
           return fallback;
         }
 
@@ -185,6 +234,7 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
           weed: Array.isArray(hourly?.weed_pollen) ? hourly.weed_pollen[idx] ?? null : null,
         };
         pollenCache.set(cacheKey, { ts: Date.now(), value });
+        writePersistedCache('pollen', cacheKey, value);
         return value;
       } catch (e) {
         console.warn(`fetchPollen: unexpected error (attempt ${attempt})`, e);
@@ -194,11 +244,13 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
         }
         const fallback = { grass: 0, tree: 0, weed: 0 };
         pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+        writePersistedCache('pollen', cacheKey, fallback);
         return fallback;
       }
     }
     const fallback = { grass: 0, tree: 0, weed: 0 };
     pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+    writePersistedCache('pollen', cacheKey, fallback);
     return fallback;
   })();
 

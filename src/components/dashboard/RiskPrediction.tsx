@@ -16,6 +16,8 @@ interface RiskPredictionProps {
 export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionProps) => {
   const { user } = useAuth();
   const lastRunRef = useRef<{ key: string; ts: number } | null>(null);
+  const PREDICTION_CACHE_PREFIX = 'risk-prediction-cache:';
+  const PREDICTION_CACHE_TTL_MS = 10 * 60 * 1000;
   const [prediction, setPrediction] = useState<{
     risk: boolean;
     confidence: number;
@@ -23,6 +25,29 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  const readCachedPrediction = (key: string) => {
+    try {
+      const raw = window.localStorage.getItem(`${PREDICTION_CACHE_PREFIX}${key}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { ts?: number; value?: typeof prediction };
+      if (!parsed || typeof parsed.ts !== 'number' || Date.now() - parsed.ts > PREDICTION_CACHE_TTL_MS) {
+        return null;
+      }
+      return parsed.value ?? null;
+    } catch (error) {
+      console.warn('Failed to read cached prediction', error);
+      return null;
+    }
+  };
+
+  const writeCachedPrediction = (key: string, value: typeof prediction) => {
+    try {
+      window.localStorage.setItem(`${PREDICTION_CACHE_PREFIX}${key}`, JSON.stringify({ ts: Date.now(), value }));
+    } catch (error) {
+      console.warn('Failed to persist cached prediction', error);
+    }
+  };
 
   useEffect(() => {
     const roundedHeartRate = Math.round(heartRate);
@@ -33,6 +58,12 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
       return;
     }
     lastRunRef.current = { key: runKey, ts: now };
+
+    const cachedPrediction = readCachedPrediction(runKey);
+    if (cachedPrediction) {
+      setPrediction(cachedPrediction);
+      return;
+    }
 
     const makePrediction = async () => {
       try {
@@ -174,6 +205,7 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
 
         const finalPred = { risk, confidence, riskLevel } as any;
         setPrediction(finalPred);
+        writeCachedPrediction(runKey, finalPred);
 
         try {
           const hasSupabase = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
