@@ -148,11 +148,17 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
 
         const apiUrl = getApiUrl();
 
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.access_token) {
+          headers['Authorization'] = `Bearer ${sessionData.session.access_token}`;
+        }
+
         const resp = await fetch(apiUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify({ 
             features: sanitizedPayload,
             email: user?.email,

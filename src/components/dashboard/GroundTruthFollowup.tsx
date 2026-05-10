@@ -142,6 +142,10 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
       try {
         setReminderBusy(true);
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.access_token) {
+          headers['Authorization'] = `Bearer ${sessionData.session.access_token}`;
+        }
 
         const response = await fetch(`${getApiBaseUrl()}/ground-truth/reminder`, {
           method: 'POST',

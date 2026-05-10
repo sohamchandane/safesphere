@@ -86,9 +86,27 @@ def canonical_name(s: str | None) -> str:
         return ""
     return ''.join(ch.lower() for ch in str(s) if ch.isalnum())
 
-def auth_ok(x_api_key: str | None) -> bool:
+def auth_ok(x_api_key: str | None, authorization: str | None = None) -> bool:
     required = os.environ.get('PRED_API_KEY')
-    return True if not required else x_api_key == required
+    if required and x_api_key == required:
+        return True
+        
+    if authorization and authorization.startswith("Bearer "):
+        jwt_token = authorization.split(" ")[1]
+        try:
+            from supabase import create_client
+            supabase_url = os.environ.get("SUPABASE_URL")
+            supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+            if supabase_url and supabase_key:
+                client = create_client(supabase_url, supabase_key)
+                user_resp = client.auth.get_user(jwt_token)
+                if user_resp and user_resp.user:
+                    return True
+        except Exception as e:
+            print(f"JWT verification failed: {e}")
+            pass
+            
+    return not required
 
 
 def is_missing_column_error(err: Exception, column_name: str, table_name: str) -> bool:
@@ -265,9 +283,9 @@ def email_test(req: EmailTestRequest):
 
 
 @app.post('/ground-truth/reminder')
-def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None = Header(None)):
-    if not auth_ok(x_api_key):
-        raise HTTPException(status_code=401, detail='Invalid API key')
+def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
+    if not auth_ok(x_api_key, authorization):
+        raise HTTPException(status_code=401, detail='Invalid API key or Token')
 
     sent = send_ground_truth_reminder_email(
         req.email,
@@ -391,10 +409,10 @@ def run_ground_truth_reminder_sweep() -> dict:
 
 
 @app.get('/ground-truth/reminder-status')
-def ground_truth_reminder_status(x_api_key: str | None = Header(None)):
+def ground_truth_reminder_status(x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
     """Return reminder scheduler and delivery diagnostics."""
-    if not auth_ok(x_api_key):
-        raise HTTPException(status_code=401, detail='Invalid API key')
+    if not auth_ok(x_api_key, authorization):
+        raise HTTPException(status_code=401, detail='Invalid API key or Token')
 
     delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
     interval_seconds = max(30, int(os.getenv("GROUND_TRUTH_SWEEP_INTERVAL_SECONDS", "60")))
@@ -466,14 +484,14 @@ def ground_truth_reminder_status(x_api_key: str | None = Header(None)):
 
 
 @app.post('/ground-truth/reminder-sweep')
-def ground_truth_reminder_sweep(x_api_key: str | None = Header(None)):
+def ground_truth_reminder_sweep(x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
     """Send reminders for unanswered predictions older than configured delay.
 
     Configure delay with env GROUND_TRUTH_REMINDER_DELAY_MINUTES (default: 20).
     Intended for periodic invocation from Render Cron.
     """
-    if not auth_ok(x_api_key):
-        raise HTTPException(status_code=401, detail='Invalid API key')
+    if not auth_ok(x_api_key, authorization):
+        raise HTTPException(status_code=401, detail='Invalid API key or Token')
 
     try:
         return run_ground_truth_reminder_sweep()
@@ -505,9 +523,9 @@ def _background_reminder_sweep_worker():
 
 
 @app.post('/predict')
-def predict(req: PredictRequest, x_api_key: str | None = Header(None)):
-    if not auth_ok(x_api_key):
-        raise HTTPException(status_code=401, detail='Invalid API key')
+def predict(req: PredictRequest, x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
+    if not auth_ok(x_api_key, authorization):
+        raise HTTPException(status_code=401, detail='Invalid API key or Token')
 
     if artifact is None:
         raise HTTPException(status_code=500, detail='Model not available on server')
