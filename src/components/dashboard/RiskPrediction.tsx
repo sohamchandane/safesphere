@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import * as externalApis from '@/lib/externalApis';
 import { getApiKey, getApiUrl } from '@/lib/runtimeConfig';
+import { useTranslation } from 'react-i18next';
 
 interface RiskPredictionProps {
   location: { latitude: number; longitude: number };
@@ -14,6 +15,7 @@ interface RiskPredictionProps {
 }
 
 export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionProps) => {
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const lastRunRef = useRef<{ key: string; ts: number } | null>(null);
   const PREDICTION_CACHE_PREFIX = 'risk-prediction-cache:';
@@ -50,8 +52,8 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
   };
 
   useEffect(() => {
-    const roundedHeartRate = Math.round(heartRate);
-    const runKey = `${userId}:${location.latitude.toFixed(4)}:${location.longitude.toFixed(4)}:${roundedHeartRate}`;
+    const normalizedHeartRate = Number(heartRate.toFixed(1));
+    const runKey = `${userId}:${location.latitude.toFixed(4)}:${location.longitude.toFixed(4)}:${normalizedHeartRate.toFixed(1)}`;
     const now = Date.now();
 
     if (lastRunRef.current && lastRunRef.current.key === runKey && now - lastRunRef.current.ts < 30_000) {
@@ -119,7 +121,7 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           pm2_5: wp.components?.pm2_5 ?? null,
           pm10: wp.components?.pm10 ?? null,
           nh3: wp.components?.nh3 ?? null,
-          heart_rate: heartRate,
+          heart_rate: normalizedHeartRate,
           grass_pollen_High: grassOH.high,
           grass_pollen_Low: grassOH.low,
           grass_pollen_Moderate: grassOH.moderate,
@@ -247,16 +249,19 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
 
         if (finalPred.risk) {
           toast({
-            title: 'Risk Alert',
-            description: `${finalPred.riskLevel.toUpperCase()} risk of asthma attack detected`,
+            title: t('riskPrediction.alertTitle', { defaultValue: 'Risk Alert' }),
+            description: t('riskPrediction.alertDescription', {
+              defaultValue: '{{riskLevel}} risk of asthma attack detected',
+              riskLevel: finalPred.riskLevel.toUpperCase(),
+            }),
             variant: 'destructive',
           });
         }
       } catch (error: any) {
         console.error('Prediction error:', error);
         toast({
-          title: 'Prediction failed',
-          description: error.message || 'Could not generate risk prediction',
+          title: t('riskPrediction.failedTitle', { defaultValue: 'Prediction failed' }),
+          description: error.message || t('riskPrediction.failedDescription', { defaultValue: 'Could not generate risk prediction' }),
           variant: 'destructive',
         });
       } finally {
@@ -271,10 +276,10 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
     return (
       <Card className="shadow-soft border-0">
         <CardHeader>
-          <CardTitle>Risk Prediction</CardTitle>
+          <CardTitle>{t('riskPrediction.title', { defaultValue: 'Risk Prediction' })}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Analyzing data...</p>
+          <p className="text-sm text-muted-foreground">{t('riskPrediction.analyzing', { defaultValue: 'Analyzing data...' })}</p>
         </CardContent>
       </Card>
     );
@@ -287,24 +292,24 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           icon: CheckCircle,
           color: 'text-success',
           bgColor: 'bg-success/10',
-          message: 'Low risk detected',
-          description: 'Environmental conditions are favorable',
+          message: t('riskPrediction.low.message', { defaultValue: 'Low risk detected' }),
+          description: t('riskPrediction.low.description', { defaultValue: 'Environmental conditions are favorable' }),
         };
       case 'moderate':
         return {
           icon: AlertCircle,
           color: 'text-warning',
           bgColor: 'bg-warning/10',
-          message: 'Moderate risk detected',
-          description: 'Be cautious and monitor symptoms',
+          message: t('riskPrediction.moderate.message', { defaultValue: 'Moderate risk detected' }),
+          description: t('riskPrediction.moderate.description', { defaultValue: 'Be cautious and monitor symptoms' }),
         };
       case 'high':
         return {
           icon: AlertTriangle,
           color: 'text-destructive',
           bgColor: 'bg-destructive/10',
-          message: 'High risk detected',
-          description: 'Take precautions and have medication ready',
+          message: t('riskPrediction.high.message', { defaultValue: 'High risk detected' }),
+          description: t('riskPrediction.high.description', { defaultValue: 'Take precautions and have medication ready' }),
         };
     }
   };
@@ -317,9 +322,9 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Icon className={`h-5 w-5 ${config.color}`} />
-          Asthma Attack Risk Prediction
+          {t('riskPrediction.heading', { defaultValue: 'Asthma Attack Risk Prediction' })}
         </CardTitle>
-        <CardDescription>Based on current environmental and health data</CardDescription>
+        <CardDescription>{t('riskPrediction.subheading', { defaultValue: 'Based on current environmental and health data' })}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
@@ -331,7 +336,7 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           </div>
           <div className="text-right">
             <p className="text-3xl font-bold">{Math.round(prediction.confidence * 100)}%</p>
-            <p className="text-xs text-muted-foreground">Confidence</p>
+            <p className="text-xs text-muted-foreground">{t('riskPrediction.confidence', { defaultValue: 'Confidence' })}</p>
           </div>
         </div>
 
@@ -340,7 +345,10 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
         </div>
 
         <div className="text-xs text-muted-foreground">
-          Prediction updated at {new Date().toLocaleTimeString()}
+          {t('riskPrediction.updatedAt', {
+            defaultValue: 'Prediction updated at {{time}}',
+            time: new Date().toLocaleTimeString(i18n.language),
+          })}
         </div>
       </CardContent>
     </Card>

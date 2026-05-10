@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 
 interface RiskMapProps {
   userId: string;
@@ -164,6 +165,7 @@ const ZoomTracker = ({ onZoom }: { onZoom: (zoom: number) => void }) => {
 };
 
 export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [records, setRecords] = useState<RawHistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,14 +219,14 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
       const message = error instanceof Error ? error.message : 'Failed to load map history';
       setErrorText(message);
       toast({
-        title: 'Could not load map history',
+        title: t('riskMap.loadFailedTitle', { defaultValue: 'Could not load map history' }),
         description: message,
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
-  }, [toast, userId]);
+  }, [t, toast, userId]);
 
   useEffect(() => {
     fetchAllHistory();
@@ -390,8 +392,8 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
     return (
       <Card className="shadow-soft border-0">
         <CardHeader>
-          <CardTitle>Risk Map</CardTitle>
-          <CardDescription>Loading your map history...</CardDescription>
+          <CardTitle>{t('riskMap.title', { defaultValue: 'Risk Map' })}</CardTitle>
+          <CardDescription>{t('riskMap.loading', { defaultValue: 'Loading your map history...' })}</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -400,9 +402,11 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
   return (
     <Card className="shadow-soft border-0">
       <CardHeader>
-        <CardTitle>Risk Map</CardTitle>
+        <CardTitle>{t('riskMap.title', { defaultValue: 'Risk Map' })}</CardTitle>
         <CardDescription>
-          View prediction history by location with separate predicted and confirmed attack layers.
+          {t('riskMap.description', {
+            defaultValue: 'View prediction history by location with separate predicted and confirmed attack layers.',
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -411,7 +415,7 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
             <Button variant={datePreset === '7d' ? 'default' : 'outline'} size="sm" onClick={() => setDatePreset('7d')}>7d</Button>
             <Button variant={datePreset === '30d' ? 'default' : 'outline'} size="sm" onClick={() => setDatePreset('30d')}>30d</Button>
             <Button variant={datePreset === '90d' ? 'default' : 'outline'} size="sm" onClick={() => setDatePreset('90d')}>90d</Button>
-            <Button variant={datePreset === 'custom' ? 'default' : 'outline'} size="sm" onClick={() => setDatePreset('custom')}>Custom</Button>
+            <Button variant={datePreset === 'custom' ? 'default' : 'outline'} size="sm" onClick={() => setDatePreset('custom')}>{t('riskMap.custom', { defaultValue: 'Custom' })}</Button>
             {datePreset === 'custom' && (
               <>
                 <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="w-[150px]" />
@@ -421,31 +425,31 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            <Button variant={eventLayer === 'predicted' ? 'default' : 'outline'} size="sm" onClick={() => setEventLayer('predicted')}>Predicted</Button>
-            <Button variant={eventLayer === 'confirmed' ? 'default' : 'outline'} size="sm" onClick={() => setEventLayer('confirmed')}>Confirmed</Button>
-            <Button variant={eventLayer === 'both' ? 'default' : 'outline'} size="sm" onClick={() => setEventLayer('both')}>Both</Button>
+            <Button variant={eventLayer === 'predicted' ? 'default' : 'outline'} size="sm" onClick={() => setEventLayer('predicted')}>{t('riskMap.predicted', { defaultValue: 'Predicted' })}</Button>
+            <Button variant={eventLayer === 'confirmed' ? 'default' : 'outline'} size="sm" onClick={() => setEventLayer('confirmed')}>{t('riskMap.confirmed', { defaultValue: 'Confirmed' })}</Button>
+            <Button variant={eventLayer === 'both' ? 'default' : 'outline'} size="sm" onClick={() => setEventLayer('both')}>{t('riskMap.both', { defaultValue: 'Both' })}</Button>
           </div>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={riskBands.low ? 'default' : 'outline'} size="sm" onClick={() => setRiskBands((prev) => ({ ...prev, low: !prev.low }))}>Low</Button>
-            <Button variant={riskBands.moderate ? 'default' : 'outline'} size="sm" onClick={() => setRiskBands((prev) => ({ ...prev, moderate: !prev.moderate }))}>Moderate</Button>
-            <Button variant={riskBands.high ? 'default' : 'outline'} size="sm" onClick={() => setRiskBands((prev) => ({ ...prev, high: !prev.high }))}>High</Button>
+            <Button variant={riskBands.low ? 'default' : 'outline'} size="sm" onClick={() => setRiskBands((prev) => ({ ...prev, low: !prev.low }))}>{t('riskMap.low', { defaultValue: 'Low' })}</Button>
+            <Button variant={riskBands.moderate ? 'default' : 'outline'} size="sm" onClick={() => setRiskBands((prev) => ({ ...prev, moderate: !prev.moderate }))}>{t('riskMap.moderate', { defaultValue: 'Moderate' })}</Button>
+            <Button variant={riskBands.high ? 'default' : 'outline'} size="sm" onClick={() => setRiskBands((prev) => ({ ...prev, high: !prev.high }))}>{t('riskMap.high', { defaultValue: 'High' })}</Button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            <Button variant={timeFilter.morning ? 'default' : 'outline'} size="sm" onClick={() => setTimeFilter((prev) => ({ ...prev, morning: !prev.morning }))}>Morning</Button>
-            <Button variant={timeFilter.evening ? 'default' : 'outline'} size="sm" onClick={() => setTimeFilter((prev) => ({ ...prev, evening: !prev.evening }))}>Evening</Button>
-            <Button variant={timeFilter.night ? 'default' : 'outline'} size="sm" onClick={() => setTimeFilter((prev) => ({ ...prev, night: !prev.night }))}>Night</Button>
+            <Button variant={timeFilter.morning ? 'default' : 'outline'} size="sm" onClick={() => setTimeFilter((prev) => ({ ...prev, morning: !prev.morning }))}>{t('riskMap.morning', { defaultValue: 'Morning' })}</Button>
+            <Button variant={timeFilter.evening ? 'default' : 'outline'} size="sm" onClick={() => setTimeFilter((prev) => ({ ...prev, evening: !prev.evening }))}>{t('riskMap.evening', { defaultValue: 'Evening' })}</Button>
+            <Button variant={timeFilter.night ? 'default' : 'outline'} size="sm" onClick={() => setTimeFilter((prev) => ({ ...prev, night: !prev.night }))}>{t('riskMap.night', { defaultValue: 'Night' })}</Button>
           </div>
         </div>
 
         <div className="rounded-lg border border-border p-3 bg-muted/30 text-sm flex flex-wrap items-center gap-4">
-          <span className="flex items-center gap-2"><span className="legend-dot legend-low" /> Low</span>
-          <span className="flex items-center gap-2"><span className="legend-dot legend-moderate" /> Moderate</span>
-          <span className="flex items-center gap-2"><span className="legend-dot legend-high" /> High</span>
-          <span className="flex items-center gap-2"><span className="legend-dot legend-confirmed" /> Confirmed attack</span>
+          <span className="flex items-center gap-2"><span className="legend-dot legend-low" /> {t('riskMap.low', { defaultValue: 'Low' })}</span>
+          <span className="flex items-center gap-2"><span className="legend-dot legend-moderate" /> {t('riskMap.moderate', { defaultValue: 'Moderate' })}</span>
+          <span className="flex items-center gap-2"><span className="legend-dot legend-high" /> {t('riskMap.high', { defaultValue: 'High' })}</span>
+          <span className="flex items-center gap-2"><span className="legend-dot legend-confirmed" /> {t('riskMap.confirmedAttack', { defaultValue: 'Confirmed attack' })}</span>
         </div>
 
         {errorText && (
@@ -456,7 +460,7 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
 
         {filteredPoints.length === 0 ? (
           <div className="rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
-            No map events for current filters. Try widening date range or enabling more filter options.
+            {t('riskMap.empty', { defaultValue: 'No map events for current filters. Try widening date range or enabling more filter options.' })}
           </div>
         ) : (
           <div className="grid xl:grid-cols-[2fr_1fr] gap-4">
@@ -485,10 +489,10 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
                     >
                       <Popup>
                         <div className="text-sm space-y-1">
-                          <p><strong>Hotspot events:</strong> {zone.count}</p>
-                          <p><strong>Average probability:</strong> {Math.round(zone.avgProbability * 100)}%</p>
-                          <p><strong>Confirmed attacks:</strong> {zone.confirmedCount}</p>
-                          <p><strong>Latest event:</strong> {new Date(zone.latestTimestamp).toLocaleString()}</p>
+                          <p><strong>{t('riskMap.hotspotEvents', { defaultValue: 'Hotspot events:' })}</strong> {zone.count}</p>
+                          <p><strong>{t('riskMap.averageProbability', { defaultValue: 'Average probability:' })}</strong> {Math.round(zone.avgProbability * 100)}%</p>
+                          <p><strong>{t('riskMap.confirmedAttacks', { defaultValue: 'Confirmed attacks:' })}</strong> {zone.confirmedCount}</p>
+                          <p><strong>{t('riskMap.latestEvent', { defaultValue: 'Latest event:' })}</strong> {new Date(zone.latestTimestamp).toLocaleString(i18n.language)}</p>
                         </div>
                       </Popup>
                     </Marker>
@@ -512,9 +516,9 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
                       >
                         <Popup>
                           <div className="text-sm">
-                            <p><strong>Probability:</strong> {Math.round(point.probability * 100)}%</p>
-                            <p><strong>Date:</strong> {new Date(point.timestamp).toLocaleString()}</p>
-                            <p><strong>Confirmed:</strong> {point.confirmedAttack ? 'Yes' : 'No'}</p>
+                            <p><strong>{t('riskMap.probability', { defaultValue: 'Probability:' })}</strong> {Math.round(point.probability * 100)}%</p>
+                            <p><strong>{t('riskMap.date', { defaultValue: 'Date:' })}</strong> {new Date(point.timestamp).toLocaleString(i18n.language)}</p>
+                            <p><strong>{t('riskMap.confirmed', { defaultValue: 'Confirmed:' })}</strong> {point.confirmedAttack ? t('riskMap.yes', { defaultValue: 'Yes' }) : t('riskMap.no', { defaultValue: 'No' })}</p>
                           </div>
                         </Popup>
                       </Marker>
@@ -537,10 +541,10 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
                   >
                     <Popup>
                       <div className="text-sm">
-                        <p><strong>Probability:</strong> {Math.round(point.probability * 100)}%</p>
-                        <p><strong>Date:</strong> {new Date(point.timestamp).toLocaleString()}</p>
-                        <p><strong>Predicted attack:</strong> {point.predictedAttack ? 'Yes' : 'No'}</p>
-                        <p><strong>Confirmed attack:</strong> {point.confirmedAttack ? 'Yes' : 'No'}</p>
+                        <p><strong>{t('riskMap.probability', { defaultValue: 'Probability:' })}</strong> {Math.round(point.probability * 100)}%</p>
+                        <p><strong>{t('riskMap.date', { defaultValue: 'Date:' })}</strong> {new Date(point.timestamp).toLocaleString(i18n.language)}</p>
+                        <p><strong>{t('riskMap.predictedAttack', { defaultValue: 'Predicted attack:' })}</strong> {point.predictedAttack ? t('riskMap.yes', { defaultValue: 'Yes' }) : t('riskMap.no', { defaultValue: 'No' })}</p>
+                        <p><strong>{t('riskMap.confirmedAttackLabel', { defaultValue: 'Confirmed attack:' })}</strong> {point.confirmedAttack ? t('riskMap.yes', { defaultValue: 'Yes' }) : t('riskMap.no', { defaultValue: 'No' })}</p>
                       </div>
                     </Popup>
                   </Marker>
@@ -566,20 +570,20 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
             <div className="space-y-4">
               <Card className="border border-border">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Patient Insights</CardTitle>
-                  <CardDescription>Top risky zones in selected filters</CardDescription>
+                  <CardTitle className="text-base">{t('riskMap.patientInsights', { defaultValue: 'Patient Insights' })}</CardTitle>
+                  <CardDescription>{t('riskMap.topRiskyZones', { defaultValue: 'Top risky zones in selected filters' })}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   {topRiskyZones.length === 0 ? (
-                    <p className="text-muted-foreground">No hotspot insight available.</p>
+                    <p className="text-muted-foreground">{t('riskMap.noHotspotInsights', { defaultValue: 'No hotspot insight available.' })}</p>
                   ) : (
                     topRiskyZones.map((zone, index) => (
                       <div key={zone.key} className="rounded-md border border-border p-2">
-                        <p className="font-medium">Zone {index + 1}</p>
-                        <p>Center: {zone.centerLat.toFixed(4)}, {zone.centerLng.toFixed(4)}</p>
-                        <p>Events: {zone.count}</p>
-                        <p>Confirmed: {zone.confirmedCount}</p>
-                        <p>Avg probability: {Math.round(zone.avgProbability * 100)}%</p>
+                        <p className="font-medium">{t('riskMap.zone', { defaultValue: 'Zone {{index}}', index: index + 1 })}</p>
+                        <p>{t('riskMap.center', { defaultValue: 'Center:' })} {zone.centerLat.toFixed(4)}, {zone.centerLng.toFixed(4)}</p>
+                        <p>{t('riskMap.events', { defaultValue: 'Events:' })} {zone.count}</p>
+                        <p>{t('riskMap.confirmed', { defaultValue: 'Confirmed:' })} {zone.confirmedCount}</p>
+                        <p>{t('riskMap.avgProbability', { defaultValue: 'Avg probability:' })} {Math.round(zone.avgProbability * 100)}%</p>
                       </div>
                     ))
                   )}
@@ -588,24 +592,24 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
 
               <Card className="border border-border">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Prediction Details</CardTitle>
-                  <CardDescription>Click a marker to inspect event details</CardDescription>
+                  <CardTitle className="text-base">{t('riskMap.predictionDetails', { defaultValue: 'Prediction Details' })}</CardTitle>
+                  <CardDescription>{t('riskMap.clickMarkerHint', { defaultValue: 'Click a marker to inspect event details' })}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   {!selectedEvent ? (
-                    <p className="text-muted-foreground">No marker selected.</p>
+                    <p className="text-muted-foreground">{t('riskMap.noMarkerSelected', { defaultValue: 'No marker selected.' })}</p>
                   ) : (
                     <>
-                      <p><strong>Date:</strong> {new Date(selectedEvent.timestamp).toLocaleString()}</p>
-                      <p><strong>Latitude:</strong> {selectedEvent.lat.toFixed(6)}</p>
-                      <p><strong>Longitude:</strong> {selectedEvent.lng.toFixed(6)}</p>
-                      <p><strong>Probability:</strong> {Math.round(selectedEvent.probability * 100)}%</p>
-                      <p><strong>Predicted attack:</strong> {selectedEvent.predictedAttack ? 'Yes' : 'No'}</p>
-                      <p><strong>Confirmed attack:</strong> {selectedEvent.confirmedAttack ? 'Yes' : 'No'}</p>
+                      <p><strong>{t('riskMap.date', { defaultValue: 'Date:' })}</strong> {new Date(selectedEvent.timestamp).toLocaleString(i18n.language)}</p>
+                      <p><strong>{t('riskMap.latitude', { defaultValue: 'Latitude:' })}</strong> {selectedEvent.lat.toFixed(6)}</p>
+                      <p><strong>{t('riskMap.longitude', { defaultValue: 'Longitude:' })}</strong> {selectedEvent.lng.toFixed(6)}</p>
+                      <p><strong>{t('riskMap.probability', { defaultValue: 'Probability:' })}</strong> {Math.round(selectedEvent.probability * 100)}%</p>
+                      <p><strong>{t('riskMap.predictedAttack', { defaultValue: 'Predicted attack:' })}</strong> {selectedEvent.predictedAttack ? t('riskMap.yes', { defaultValue: 'Yes' }) : t('riskMap.no', { defaultValue: 'No' })}</p>
+                      <p><strong>{t('riskMap.confirmedAttackLabel', { defaultValue: 'Confirmed attack:' })}</strong> {selectedEvent.confirmedAttack ? t('riskMap.yes', { defaultValue: 'Yes' }) : t('riskMap.no', { defaultValue: 'No' })}</p>
                       <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-2">
-                        <span>Heart rate: {formatValue(selectedEvent.factors.heartRate)}</span>
-                        <span>Temperature: {formatValue(selectedEvent.factors.temperature)}</span>
-                        <span>Pressure: {formatValue(selectedEvent.factors.pressure)}</span>
+                        <span>{t('riskMap.heartRate', { defaultValue: 'Heart rate:' })} {formatValue(selectedEvent.factors.heartRate)}</span>
+                        <span>{t('riskMap.temperature', { defaultValue: 'Temperature:' })} {formatValue(selectedEvent.factors.temperature)}</span>
+                        <span>{t('riskMap.pressure', { defaultValue: 'Pressure:' })} {formatValue(selectedEvent.factors.pressure)}</span>
                         <span>PM2.5: {formatValue(selectedEvent.factors.pm2_5)}</span>
                         <span>PM10: {formatValue(selectedEvent.factors.pm10)}</span>
                         <span>O3: {formatValue(selectedEvent.factors.o3)}</span>
@@ -613,9 +617,9 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
                         <span>SO2: {formatValue(selectedEvent.factors.so2)}</span>
                         <span>CO: {formatValue(selectedEvent.factors.co)}</span>
                         <span>NH3: {formatValue(selectedEvent.factors.nh3)}</span>
-                        <span>Grass pollen: {formatValue(selectedEvent.factors.grassPollen)}</span>
-                        <span>Tree pollen: {formatValue(selectedEvent.factors.treePollen)}</span>
-                        <span>Weed pollen: {formatValue(selectedEvent.factors.weedPollen)}</span>
+                        <span>{t('riskMap.grassPollen', { defaultValue: 'Grass pollen:' })} {formatValue(selectedEvent.factors.grassPollen)}</span>
+                        <span>{t('riskMap.treePollen', { defaultValue: 'Tree pollen:' })} {formatValue(selectedEvent.factors.treePollen)}</span>
+                        <span>{t('riskMap.weedPollen', { defaultValue: 'Weed pollen:' })} {formatValue(selectedEvent.factors.weedPollen)}</span>
                       </div>
 
                       <Button
@@ -624,15 +628,15 @@ export const RiskMap = ({ userId, refreshKey = 0 }: RiskMapProps) => {
                         onClick={() => setShowLocationEvents((prev) => !prev)}
                         disabled={!selectedLocationKey}
                       >
-                        Show all events at this location
+                        {t('riskMap.showAllAtLocation', { defaultValue: 'Show all events at this location' })}
                       </Button>
 
                       {showLocationEvents && locationEvents.length > 0 && (
                         <div className="space-y-1 border-t border-border pt-2">
                           {locationEvents.slice(0, 20).map((event) => (
                             <div key={event.id} className="rounded-md bg-muted/50 px-2 py-1">
-                              <p>{new Date(event.timestamp).toLocaleString()}</p>
-                              <p>Probability: {Math.round(event.probability * 100)}%, Confirmed: {event.confirmedAttack ? 'Yes' : 'No'}</p>
+                              <p>{new Date(event.timestamp).toLocaleString(i18n.language)}</p>
+                              <p>{t('riskMap.probability', { defaultValue: 'Probability:' })} {Math.round(event.probability * 100)}%, {t('riskMap.confirmed', { defaultValue: 'Confirmed:' })} {event.confirmedAttack ? t('riskMap.yes', { defaultValue: 'Yes' }) : t('riskMap.no', { defaultValue: 'No' })}</p>
                             </div>
                           ))}
                         </div>

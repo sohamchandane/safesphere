@@ -3,9 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Heart, Bluetooth, Activity } from 'lucide-react';
+import { Heart, Bluetooth, Activity, Fingerprint, Watch, Calculator, HeartPulse } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useTranslation } from 'react-i18next';
 
 interface HeartRateMonitorProps {
   onHeartRateUpdate: (heartRate: number) => void;
@@ -14,6 +15,7 @@ interface HeartRateMonitorProps {
 }
 
 export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateMonitorProps) => {
+  const { t } = useTranslation();
   const [isConnected, setIsConnected] = useState(false);
   const [currentHeartRate, setCurrentHeartRate] = useState<number | null>(null);
   const [hrValues, setHrValues] = useState<number[]>([]);
@@ -21,14 +23,16 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
   const { toast } = useToast();
   const hrCharRef = useRef<any>(null);
   const serverRef = useRef<any>(null);
+  const formatHeartRate = (value: number) => value.toFixed(1);
+  const normalizeHeartRate = (value: number) => Number(value.toFixed(1));
 
   const connectSmartwatch = async () => {
     try {
       // Check if Web Bluetooth API is available
       if (!navigator.bluetooth) {
         toast({
-          title: 'Bluetooth not supported',
-          description: 'Your browser does not support Web Bluetooth API',
+          title: t('heartRateMonitor.bluetoothNotSupported', { defaultValue: 'Bluetooth not supported' }),
+          description: t('heartRateMonitor.bluetoothNotSupportedDesc', { defaultValue: 'Your browser does not support Web Bluetooth API' }),
           variant: 'destructive',
         });
         return;
@@ -41,8 +45,8 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
       });
 
       toast({
-        title: 'Device selected',
-        description: `Connecting to ${device.name || 'device'}...`,
+        title: t('heartRateMonitor.deviceSelected', { defaultValue: 'Device selected' }),
+        description: t('heartRateMonitor.connectingToDevice', { defaultValue: `Connecting to ${device.name || 'device'}...` }),
       });
 
       const server: any = await device.gatt.connect();
@@ -59,9 +63,9 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
 
         // maintain a rolling list of recent values (limit to 120 samples)
         setHrValues(prev => {
-          const next = [...prev, rate].slice(-120);
+          const next = [...prev, normalizeHeartRate(rate)].slice(-120);
           // update moving average as the displayed current heart rate
-          const avg = Math.round(next.reduce((a, b) => a + b, 0) / next.length);
+          const avg = normalizeHeartRate(next.reduce((a, b) => a + b, 0) / next.length);
           setCurrentHeartRate(avg);
           onHeartRateUpdate(avg);
           return next;
@@ -72,14 +76,14 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
 
       setIsConnected(true);
       toast({
-        title: 'Smartwatch connected',
-        description: 'Heart rate notifications started',
+        title: t('heartRateMonitor.connectedStatus'),
+        description: t('heartRateMonitor.notificationsStarted', { defaultValue: 'Heart rate notifications started' }),
       });
     } catch (error: any) {
       console.error('Bluetooth connection error:', error);
       toast({
-        title: 'Connection failed',
-        description: error.message || 'Could not connect to smartwatch',
+        title: t('heartRateMonitor.connectionFailed', { defaultValue: 'Connection failed' }),
+        description: error.message || t('heartRateMonitor.connectionFailedDesc', { defaultValue: 'Could not connect to smartwatch' }),
         variant: 'destructive',
       });
     }
@@ -102,16 +106,16 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
     setIsConnected(false);
 
     // compute final average
-    const finalAvg = hrValues.length ? Math.round(hrValues.reduce((a, b) => a + b, 0) / hrValues.length) : null;
+    const finalAvg = hrValues.length ? normalizeHeartRate(hrValues.reduce((a, b) => a + b, 0) / hrValues.length) : null;
     if (onSessionEnd) onSessionEnd(finalAvg, hrValues);
   };
 
   const handleManualInput = () => {
-    const hr = parseInt(manualHeartRate);
+    const hr = normalizeHeartRate(Number.parseFloat(manualHeartRate));
     if (isNaN(hr) || hr < 40 || hr > 200) {
       toast({
-        title: 'Invalid heart rate',
-        description: 'Please enter a valid heart rate between 40-200 BPM',
+        title: t('heartRateMonitor.invalidHeartRate'),
+        description: t('heartRateMonitor.invalidHeartRateDesc'),
         variant: 'destructive',
       });
       return;
@@ -121,8 +125,8 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
     setHrValues(prev => [...prev, hr].slice(-120));
     onHeartRateUpdate(hr);
     toast({
-      title: 'Heart rate updated',
-      description: `Heart rate set to ${hr} BPM`,
+      title: t('heartRateMonitor.updatedTitle'),
+      description: t('heartRateMonitor.updatedDesc', { hr }),
     });
   };
 
@@ -171,20 +175,70 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
     }).join(' ');
   };
 
+  const renderManualStepDiagram = (step: 1 | 2 | 3) => {
+    if (step === 1) {
+      return (
+        <svg viewBox="0 0 240 130" className="h-28 w-full rounded-lg bg-gradient-to-br from-background to-primary/5">
+          <defs>
+            <linearGradient id="step1-gradient" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stopColor="hsl(var(--primary))" />
+              <stop offset="100%" stopColor="hsl(var(--success))" />
+            </linearGradient>
+          </defs>
+          <rect x="28" y="72" width="184" height="28" rx="14" fill="hsl(var(--muted))" opacity="0.78" />
+          <rect x="58" y="40" width="22" height="60" rx="11" fill="hsl(var(--foreground))" opacity="0.16" transform="rotate(-16 58 40)" />
+          <rect x="92" y="34" width="22" height="66" rx="11" fill="hsl(var(--foreground))" opacity="0.16" transform="rotate(-10 92 34)" />
+          <path d="M42 86 C66 86, 86 86, 104 86 C118 86, 128 76, 138 74 C150 72, 160 78, 170 74" stroke="url(#step1-gradient)" strokeWidth="4" fill="none" strokeLinecap="round" />
+          <circle cx="104" cy="86" r="7" fill="hsl(var(--primary))" />
+          <circle cx="138" cy="74" r="7" fill="hsl(var(--success))" />
+          <path d="M96 26 C112 18, 128 20, 140 30" stroke="hsl(var(--primary))" strokeWidth="3" fill="none" strokeLinecap="round" strokeDasharray="3 5" opacity="0.75" />
+          <text x="120" y="118" textAnchor="middle" fontSize="12" fill="hsl(var(--foreground))">{t('heartRateMonitor.diagramFinger')}</text>
+        </svg>
+      );
+    }
+
+    if (step === 2) {
+      return (
+        <svg viewBox="0 0 240 130" className="h-28 w-full rounded-lg bg-gradient-to-br from-background to-success/5">
+          <circle cx="120" cy="58" r="34" fill="hsl(var(--primary))" opacity="0.12" />
+          <circle cx="120" cy="58" r="26" fill="none" stroke="hsl(var(--success))" strokeWidth="4" strokeDasharray="110 18" />
+          <path d="M120 58 L120 40" stroke="hsl(var(--primary))" strokeWidth="4" strokeLinecap="round" />
+          <path d="M120 58 L135 66" stroke="hsl(var(--warning))" strokeWidth="4" strokeLinecap="round" />
+          <circle cx="120" cy="58" r="5" fill="hsl(var(--foreground))" />
+          <text x="120" y="112" textAnchor="middle" fontSize="13" fill="hsl(var(--foreground))">15s</text>
+        </svg>
+      );
+    }
+
+    return (
+      <svg viewBox="0 0 240 130" className="h-28 w-full rounded-lg bg-gradient-to-br from-background to-warning/5">
+        <rect x="34" y="30" width="78" height="68" rx="14" fill="hsl(var(--background))" stroke="hsl(var(--border))" />
+        <rect x="50" y="46" width="16" height="10" rx="3" fill="hsl(var(--primary))" />
+        <rect x="72" y="46" width="16" height="10" rx="3" fill="hsl(var(--primary))" />
+        <rect x="50" y="62" width="16" height="10" rx="3" fill="hsl(var(--muted-foreground))" opacity="0.7" />
+        <rect x="72" y="62" width="16" height="10" rx="3" fill="hsl(var(--muted-foreground))" opacity="0.7" />
+        <path d="M136 62 L168 62" stroke="hsl(var(--primary))" strokeWidth="5" strokeLinecap="round" />
+        <path d="M168 62 L184 46" stroke="hsl(var(--success))" strokeWidth="5" strokeLinecap="round" />
+        <text x="184" y="50" textAnchor="start" fontSize="20" fontWeight="700" fill="hsl(var(--primary))">x4</text>
+        <text x="136" y="92" textAnchor="start" fontSize="14" fill="hsl(var(--foreground))">={t('heartRateMonitor.currentBpm')}</text>
+      </svg>
+    );
+  };
+
   return (
     <Card className="shadow-soft border-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Heart className="h-5 w-5 text-primary" />
-          Heart Rate Monitoring
+          {t('heartRateMonitor.title')}
         </CardTitle>
-        <CardDescription>Connect smartwatch or enter manually</CardDescription>
+        <CardDescription>{t('heartRateMonitor.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="smartwatch" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="smartwatch">Smartwatch</TabsTrigger>
-            <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+            <TabsTrigger value="smartwatch">{t('heartRateMonitor.smartwatchTab')}</TabsTrigger>
+            <TabsTrigger value="manual">{t('heartRateMonitor.manualTab')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="smartwatch" className="space-y-4">
@@ -196,10 +250,10 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Connect your smartwatch to track heart rate in real-time
+                  {t('heartRateMonitor.connectHint')}
                 </p>
                 <Button onClick={connectSmartwatch} className="bg-gradient-hero">
-                  Connect Smartwatch
+                  {t('heartRateMonitor.connectButton')}
                 </Button>
               </div>
             ) : (
@@ -211,16 +265,16 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
                 </div>
                 {currentHeartRate && (
                   <div>
-                    <p className="text-5xl font-bold text-primary">{currentHeartRate}</p>
-                    <p className="text-sm text-muted-foreground mt-2">BPM (Live)</p>
+                    <p className="text-5xl font-bold text-primary">{formatHeartRate(currentHeartRate)}</p>
+                    <p className="text-sm text-muted-foreground mt-2">{t('heartRateMonitor.liveReading')}</p>
                   </div>
                 )}
                 {hrValues.length > 0 && (
                   <div className="pt-4">
                     <div className="text-sm text-muted-foreground space-y-1">
-                      <div>Recent: {hrValues.slice(-10).join(', ')}</div>
+                      <div>{t('heartRateMonitor.recentReadings')}: {hrValues.slice(-10).map((value) => value.toFixed(1)).join(', ')}</div>
                       <div>
-                        Avg: {Math.round(hrValues.reduce((a, b) => a + b, 0) / hrValues.length)} bpm • Min: {Math.min(...hrValues)} • Max: {Math.max(...hrValues)}
+                        {t('heartRateMonitor.summary')}: {formatHeartRate(normalizeHeartRate(hrValues.reduce((a, b) => a + b, 0) / hrValues.length))} bpm • {t('heartRateMonitor.min')}: {formatHeartRate(Math.min(...hrValues))} • {t('heartRateMonitor.max')}: {formatHeartRate(Math.max(...hrValues))}
                       </div>
                     </div>
 
@@ -233,7 +287,7 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
                 )}
                 <div className="pt-4">
                   <Button onClick={endSession} variant="destructive" className="w-full">
-                    End Session & Predict
+                    {t('heartRateMonitor.endSession')}
                   </Button>
                 </div>
               </div>
@@ -242,50 +296,86 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
 
           <TabsContent value="manual" className="space-y-4">
             <div className="space-y-4 py-4">
+              <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-background via-background to-primary/5 p-4 shadow-soft">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-primary/10 p-3 text-primary">
+                    <HeartPulse className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-foreground">{t('heartRateMonitor.howToMeasureTitle')}</h4>
+                    <p className="text-sm text-muted-foreground">{t('heartRateMonitor.howToMeasureIntro')}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-border/60 bg-card/80 p-3 shadow-sm">
+                    <div className="mb-3 overflow-hidden rounded-lg border border-border/50 bg-background/80">
+                      {renderManualStepDiagram(1)}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Fingerprint className="h-4 w-4 text-primary" />
+                      {t('heartRateMonitor.stepOneTitle')}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{t('heartRateMonitor.stepOneText')}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-card/80 p-3 shadow-sm">
+                    <div className="mb-3 overflow-hidden rounded-lg border border-border/50 bg-background/80">
+                      {renderManualStepDiagram(2)}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Watch className="h-4 w-4 text-primary" />
+                      {t('heartRateMonitor.stepTwoTitle')}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{t('heartRateMonitor.stepTwoText')}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-card/80 p-3 shadow-sm">
+                    <div className="mb-3 overflow-hidden rounded-lg border border-border/50 bg-background/80">
+                      {renderManualStepDiagram(3)}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Calculator className="h-4 w-4 text-primary" />
+                      {t('heartRateMonitor.stepThreeTitle')}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{t('heartRateMonitor.stepThreeText')}</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="heart-rate">Heart Rate (BPM)</Label>
+                <Label htmlFor="heart-rate">{t('heartRateMonitor.manualLabel')}</Label>
                 <Input
                   id="heart-rate"
-                  type="number"
-                  placeholder="Enter your heart rate"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\d{1,3}(?:\.\d)?$"
+                  placeholder={t('heartRateMonitor.manualPlaceholder')}
                   value={manualHeartRate}
                   onChange={(e) => setManualHeartRate(e.target.value)}
-                  min="40"
-                  max="200"
                 />
-              </div>
-              
-              <div className="bg-muted p-4 rounded-lg space-y-2">
-                <h4 className="text-sm font-semibold">How to measure manually:</h4>
-                <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>Place two fingers on your wrist pulse</li>
-                  <li>Count beats for 15 seconds</li>
-                  <li>Multiply by 4 to get BPM</li>
-                </ol>
               </div>
 
               <Button onClick={handleManualInput} className="w-full bg-gradient-hero">
-                Set Heart Rate
+                {t('heartRateMonitor.setButton')}
               </Button>
 
               <Button
                 onClick={() => {
-                  const hr = parseInt(manualHeartRate);
+                  const hr = normalizeHeartRate(Number.parseFloat(manualHeartRate));
                   if (!isNaN(hr)) {
                     const finalAvg = hr;
                     if (onSessionEnd) onSessionEnd(finalAvg, [hr]);
-                    toast({ title: 'Submitted', description: `Submitted heart rate ${hr} BPM` });
+                    toast({ title: t('heartRateMonitor.submittedTitle'), description: t('heartRateMonitor.submittedDesc', { hr }) });
                   }
                 }}
                 className="w-full mt-2"
               >
-                Submit & Predict
+                {t('heartRateMonitor.submitButton')}
               </Button>
 
               {currentHeartRate && (
                 <div className="text-center pt-4">
-                  <p className="text-3xl font-bold text-primary">{currentHeartRate}</p>
-                  <p className="text-sm text-muted-foreground mt-1">Current BPM</p>
+                  <p className="text-3xl font-bold text-primary">{formatHeartRate(currentHeartRate)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{t('heartRateMonitor.currentBpm')}</p>
                 </div>
               )}
             </div>

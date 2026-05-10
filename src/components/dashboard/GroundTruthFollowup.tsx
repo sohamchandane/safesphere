@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
 import { getApiBaseUrl, getApiKey } from '@/lib/runtimeConfig';
+import { useTranslation } from 'react-i18next';
 
 type MonitoringRecord = {
   id: string;
@@ -54,6 +55,7 @@ const getCurrentLocation = async (): Promise<{ latitude: number; longitude: numb
 };
 
 export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: GroundTruthFollowupProps) => {
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [records, setRecords] = useState<MonitoringRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,14 +207,14 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
 
       setRecords((prev) => prev.filter((item) => item.id !== record.id));
       toast({
-        title: 'Thanks for the feedback',
-        description: 'Your latest prediction has been validated.',
+        title: t('followup.thanksTitle', { defaultValue: 'Thanks for the feedback' }),
+        description: t('followup.thanksDescription', { defaultValue: 'Your latest prediction has been validated.' }),
       });
       onAnswered?.();
     } catch (error: any) {
       toast({
-        title: 'Could not save your feedback',
-        description: error.message || 'Please try again.',
+        title: t('followup.saveFailedTitle', { defaultValue: 'Could not save your feedback' }),
+        description: error.message || t('followup.saveFailedDescription', { defaultValue: 'Please try again.' }),
         variant: 'destructive',
       });
     } finally {
@@ -232,19 +234,25 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
           <Card key={record.id} className="shadow-soft border-0 border-l-4 border-l-warning">
             <CardHeader>
               <CardTitle>
-                {index === 0 ? 'Validate Last Prediction' : 'Pending Follow-up'}
+                {index === 0
+                  ? t('followup.validateLast', { defaultValue: 'Validate Last Prediction' })
+                  : t('followup.pending', { defaultValue: 'Pending Follow-up' })}
               </CardTitle>
               <CardDescription>
-                Session at {record.timestamp ? new Date(record.timestamp).toLocaleString() : 'N/A'} with predicted attack:{' '}
-                {record.attack_prediction ? 'Yes' : 'No'} ({Math.round((record.prediction_confidence || 0) * 100)}% confidence)
+                {t('followup.sessionSummary', {
+                  defaultValue: 'Session at {{time}} with predicted attack: {{prediction}} ({{confidence}}% confidence)',
+                  time: record.timestamp ? new Date(record.timestamp).toLocaleString(i18n.language) : t('followup.na', { defaultValue: 'N/A' }),
+                  prediction: record.attack_prediction ? t('followup.yes', { defaultValue: 'Yes' }) : t('followup.no', { defaultValue: 'No' }),
+                  confidence: Math.round((record.prediction_confidence || 0) * 100),
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               <Button disabled={isAnswering} onClick={() => submitAnswer(record, true)}>
-                Yes, attack was triggered
+                {t('followup.yesTriggered', { defaultValue: 'Yes, attack was triggered' })}
               </Button>
               <Button disabled={isAnswering} variant="outline" onClick={() => submitAnswer(record, false)}>
-                No, attack was not triggered
+                {t('followup.noNotTriggered', { defaultValue: 'No, attack was not triggered' })}
               </Button>
             </CardContent>
           </Card>
