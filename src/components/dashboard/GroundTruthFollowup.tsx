@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
-import { getApiBaseUrl, getApiKey } from '@/lib/runtimeConfig';
+import { getApiBaseUrl } from '@/lib/runtimeConfig';
 import { useTranslation } from 'react-i18next';
 
 type MonitoringRecord = {
@@ -141,11 +141,7 @@ export const GroundTruthFollowup = ({ userId, email, username, onAnswered }: Gro
 
       try {
         setReminderBusy(true);
-        const apiKey = getApiKey();
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (apiKey) {
-          headers['x-api-key'] = apiKey;
-        }
 
         const response = await fetch(`${getApiBaseUrl()}/ground-truth/reminder`, {
           method: 'POST',

@@ -13,15 +13,14 @@ This repository deploys as:
 - Publish directory: `dist`
 - SPA rewrite to `/index.html`
 
-Required frontend env vars:
+Required frontend env vars (safe to expose):
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
-- `VITE_OPENWEATHER_API_KEY`
+- `VITE_SUPABASE_PROJECT_ID`
 - `VITE_PRED_API_URL`
-- `VITE_PRED_API_KEY`
-- `VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES`
-- `VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES`
+
+**Security Note**: Do NOT add `VITE_PRED_API_KEY`, `VITE_OPENWEATHER_API_KEY`, or any other API keys to frontend environment variables. These are handled by the backend proxy endpoints.
 
 ### Backend (Web Service)
 

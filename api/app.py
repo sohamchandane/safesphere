@@ -547,8 +547,107 @@ def predict(req: PredictRequest, x_api_key: str | None = Header(None)):
 
 
 # ============================================================================
-# REGISTRATION ENDPOINT (uses service_role to bypass RLS)
+# WEATHER AND POLLEN PROXY ENDPOINTS (keeps external API keys server-side)
 # ============================================================================
+
+@app.get("/api/weather-pollution")
+async def get_weather_pollution(lat: float, lon: float):
+    """
+    Proxy endpoint for weather and pollution data.
+    Keeps OpenWeather API key server-side only.
+    """
+    try:
+        api_key = os.getenv('OPENWEATHER_API_KEY')
+        if not api_key:
+            return {
+                'temperature': None,
+                'pressure': None,
+                'aqi': None,
+                'components': None
+            }
+        
+        # Call OpenWeather API for weather data
+        weather_url = f'https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}'
+        weather_resp = _http.get(weather_url, timeout=10)
+        
+        # Call OpenWeather API for pollution data
+        pollution_url = f'https://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}'
+        pollution_resp = _http.get(pollution_url, timeout=10)
+        
+        if not weather_resp.ok or not pollution_resp.ok:
+            return {
+                'temperature': None,
+                'pressure': None,
+                'aqi': None,
+                'components': None
+            }
+        
+        weather_data = weather_resp.json()
+        pollution_data = pollution_resp.json()
+        
+        # Extract weather info
+        temperature = weather_data.get('main', {}).get('temp')
+        pressure = weather_data.get('main', {}).get('pressure')
+        
+        # Extract pollution info
+        aqi = None
+        components = None
+        if pollution_data.get('list'):
+            poll_entry = pollution_data['list'][0]
+            aqi_val = poll_entry.get('main', {}).get('aqi')
+            if aqi_val:
+                aqi_map = {1: 25, 2: 75, 3: 125, 4: 175, 5: 300}
+                aqi = aqi_map.get(aqi_val)
+            components = poll_entry.get('components', {})
+        
+        return {
+            'temperature': temperature,
+            'pressure': pressure,
+            'aqi': aqi,
+            'components': components
+        }
+    except Exception as e:
+        print(f"Weather/Pollution proxy error: {e}")
+        return {
+            'temperature': None,
+            'pressure': None,
+            'aqi': None,
+            'components': None
+        }
+
+
+@app.get("/api/pollen")
+async def get_pollen(lat: float, lon: float):
+    """
+    Proxy endpoint for pollen data.
+    Open-Meteo API is free and doesn't require authentication.
+    """
+    try:
+        # Open-Meteo is free and doesn't need API key
+        url = f'https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC'
+        resp = _http.get(url, timeout=10)
+        
+        if not resp.ok:
+            return {'grass': 0, 'tree': 0, 'weed': 0}
+        
+        data = resp.json()
+        hourly = data.get('hourly', {})
+        
+        # Get current hour's pollen data (first entry in hourly array)
+        grass = hourly.get('grass_pollen', [0])[0] if hourly.get('grass_pollen') else 0
+        tree = hourly.get('tree_pollen', [0])[0] if hourly.get('tree_pollen') else 0
+        weed = hourly.get('weed_pollen', [0])[0] if hourly.get('weed_pollen') else 0
+        
+        return {
+            'grass': grass,
+            'tree': tree,
+            'weed': weed
+        }
+    except Exception as e:
+        print(f"Pollen proxy error: {e}")
+        return {'grass': 0, 'tree': 0, 'weed': 0}
+
+
 
 class RegisterRequest(BaseModel):
     email: str

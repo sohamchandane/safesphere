@@ -37,12 +37,11 @@ Minimum frontend env vars:
 ```env
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
-VITE_OPENWEATHER_API_KEY=...
-VITE_PRED_API_URL=https://your-backend-domain/predict
-VITE_PRED_API_KEY=...
-VITE_GROUND_TRUTH_PROMPT_DELAY_MINUTES=10
-VITE_GROUND_TRUTH_REMINDER_DELAY_MINUTES=10
+VITE_SUPABASE_PROJECT_ID=...
+VITE_PRED_API_URL=https://your-backend-domain/api/predict
 ```
+
+**Note**: Do NOT expose API keys in frontend environment variables. Weather, pollen, and other external API calls are proxied through the backend.
 
 ### Backend
 

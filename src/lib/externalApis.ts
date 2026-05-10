@@ -1,4 +1,4 @@
-import { getOpenWeatherApiKey } from '@/lib/runtimeConfig';
+import { getApiBaseUrl } from '@/lib/runtimeConfig';
 
 export type WeatherPollution = {
   temperature: number | null;
@@ -83,54 +83,16 @@ export async function fetchWeatherAndPollution(lat: number, lon: number): Promis
   const inFlight = weatherInFlight.get(cacheKey);
   if (inFlight) return inFlight;
 
-  const apiKey = getOpenWeatherApiKey();
-  if (!apiKey) throw new Error('OpenWeather API key not configured (VITE_OPENWEATHER_API_KEY)');
-
+  // Call backend proxy endpoint - backend keeps API keys secure
+  const apiBaseUrl = getApiBaseUrl();
   const reqPromise = (async () => {
-    const [weatherRes, pollRes] = await Promise.all([
-      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`),
-      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${apiKey}`),
-    ]);
-
-    if (!weatherRes.ok) throw new Error('Failed to fetch weather');
-    const weatherJson = await weatherRes.json();
-    const temperature = (weatherJson?.main?.temp ?? null) as number | null;
-    const pressure = (weatherJson?.main?.pressure ?? null) as number | null;
-
-    let components = null;
-    let aqi = null;
-    if (pollRes.ok) {
-      const pollJson = await pollRes.json();
-      const pollData = pollJson?.list?.[0];
-      
-      const comps = pollData?.components;
-      if (comps) {
-        components = {
-          co: comps.co ?? null,
-          no: comps.no ?? null,
-          no2: comps.no2 ?? null,
-          o3: comps.o3 ?? null,
-          so2: comps.so2 ?? null,
-          pm2_5: comps.pm2_5 ?? null,
-          pm10: comps.pm10 ?? null,
-          nh3: comps.nh3 ?? null,
-        };
-      }
-
-      const aqiValue = pollData?.main?.aqi;
-      if (aqiValue) {
-        const aqiMap: Record<number, number> = {
-          1: 25,
-          2: 75,
-          3: 125,
-          4: 175,
-          5: 300,
-        };
-        aqi = aqiMap[aqiValue] ?? null;
-      }
+    const response = await fetch(`${apiBaseUrl}/weather-pollution?lat=${lat}&lon=${lon}`);
+    
+    if (!response.ok) {
+      throw new Error(`Backend weather API failed (${response.status})`);
     }
 
-    const value = { temperature, pressure, aqi, components };
+    const value = await response.json() as WeatherPollution;
     weatherCache.set(cacheKey, { ts: Date.now(), value });
     writePersistedCache('weather', cacheKey, value);
     return value;
@@ -163,95 +125,27 @@ export async function fetchPollen(lat: number, lon: number): Promise<{
   const inFlight = pollenInFlight.get(cacheKey);
   if (inFlight) return inFlight;
 
-  const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC`;
-
-  const maxAttempts = 3;
-  const baseDelay = 500; // ms
-
-  const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
-
+  // Call backend proxy endpoint - backend keeps API keys secure
+  const apiBaseUrl = getApiBaseUrl();
   const reqPromise = (async () => {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          console.warn(`fetchPollen: Open-Meteo HTTP ${res.status} (attempt ${attempt})`, url);
-          if (res.status >= 500 && attempt < maxAttempts) {
-            await sleep(baseDelay * Math.pow(2, attempt - 1));
-            continue;
-          }
-          const fallback = { grass: 0, tree: 0, weed: 0 };
-          pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
-          writePersistedCache('pollen', cacheKey, fallback);
-          return fallback;
-        }
-
-        const j = await res.json();
-        if (j && (j.error || j.reason || j.detail)) {
-          const reason = j.reason || j.detail || j.error;
-          console.warn(`fetchPollen: Open-Meteo error (attempt ${attempt}):`, reason);
-          if (attempt < maxAttempts) {
-            await sleep(baseDelay * Math.pow(2, attempt - 1));
-            continue;
-          }
-          const fallback = { grass: 0, tree: 0, weed: 0 };
-          pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
-          writePersistedCache('pollen', cacheKey, fallback);
-          return fallback;
-        }
-
-        const hourly = j?.hourly;
-        if (!hourly) {
-          const fallback = { grass: 0, tree: 0, weed: 0 };
-          pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
-          return fallback;
-        }
-
-        const times: string[] = Array.isArray(hourly.time) ? hourly.time : [];
-        let idx = 0;
-        if (times.length > 0) {
-          const now = new Date();
-          const nowTs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours());
-          let best = 0;
-          let bestDiff = Infinity;
-          for (let i = 0; i < times.length; i++) {
-            const t = times[i];
-            const d = Date.parse(t);
-            if (!isNaN(d)) {
-              const diff = Math.abs(d - nowTs);
-              if (diff < bestDiff) {
-                bestDiff = diff;
-                best = i;
-              }
-            }
-          }
-          idx = best;
-        }
-
-        const value = {
-          grass: Array.isArray(hourly?.grass_pollen) ? hourly.grass_pollen[idx] ?? null : null,
-          tree: Array.isArray(hourly?.tree_pollen) ? hourly.tree_pollen[idx] ?? null : null,
-          weed: Array.isArray(hourly?.weed_pollen) ? hourly.weed_pollen[idx] ?? null : null,
-        };
-        pollenCache.set(cacheKey, { ts: Date.now(), value });
-        writePersistedCache('pollen', cacheKey, value);
-        return value;
-      } catch (e) {
-        console.warn(`fetchPollen: unexpected error (attempt ${attempt})`, e);
-        if (attempt < maxAttempts) {
-          await sleep(baseDelay * Math.pow(2, attempt - 1));
-          continue;
-        }
-        const fallback = { grass: 0, tree: 0, weed: 0 };
-        pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
-        writePersistedCache('pollen', cacheKey, fallback);
-        return fallback;
+    try {
+      const response = await fetch(`${apiBaseUrl}/pollen?lat=${lat}&lon=${lon}`);
+      
+      if (!response.ok) {
+        throw new Error(`Backend pollen API failed (${response.status})`);
       }
+
+      const value = await response.json() as { grass?: number | null; tree?: number | null; weed?: number | null } | null;
+      pollenCache.set(cacheKey, { ts: Date.now(), value: value ?? { grass: 0, tree: 0, weed: 0 } });
+      writePersistedCache('pollen', cacheKey, value ?? { grass: 0, tree: 0, weed: 0 });
+      return value;
+    } catch (error) {
+      // Return fallback on error
+      const fallback = { grass: 0, tree: 0, weed: 0 };
+      pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
+      writePersistedCache('pollen', cacheKey, fallback);
+      return fallback;
     }
-    const fallback = { grass: 0, tree: 0, weed: 0 };
-    pollenCache.set(cacheKey, { ts: Date.now(), value: fallback });
-    writePersistedCache('pollen', cacheKey, fallback);
-    return fallback;
   })();
 
   pollenInFlight.set(cacheKey, reqPromise);

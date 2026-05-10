@@ -17,18 +17,18 @@ const AttackHistory = lazy(() =>
   import('@/components/dashboard/AttackHistory').then((mod) => ({ default: mod.AttackHistory }))
 );
 
-const DeferredSection = ({
+const DeferredVisibilitySection = ({
   children,
   fallback,
 }: {
   children: React.ReactNode;
   fallback: React.ReactNode;
 }) => {
-  const [isVisible, setIsVisible] = useState(false);
+  const [hasBeenVisible, setHasBeenVisible] = useState(false);
   const sectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isVisible) return;
+    if (hasBeenVisible) return;
 
     const element = sectionRef.current;
     if (!element) return;
@@ -36,7 +36,7 @@ const DeferredSection = ({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          setIsVisible(true);
+          setHasBeenVisible(true);
           observer.disconnect();
         }
       },
@@ -46,11 +46,11 @@ const DeferredSection = ({
     observer.observe(element);
 
     return () => observer.disconnect();
-  }, [isVisible]);
+  }, [hasBeenVisible]);
 
   return (
     <div ref={sectionRef} className="content-visibility-auto">
-      {isVisible ? children : fallback}
+      {hasBeenVisible ? children : fallback}
     </div>
   );
 };
@@ -200,7 +200,7 @@ const Dashboard = () => {
             onAnswered={() => setHistoryRefreshKey((prev) => prev + 1)}
           />
 
-          <DeferredSection
+          <DeferredVisibilitySection
             fallback={
               <Card className="shadow-soft border-0">
                 <CardHeader>
@@ -220,9 +220,9 @@ const Dashboard = () => {
             >
               <RiskMap userId={user.id} refreshKey={historyRefreshKey} />
             </Suspense>
-          </DeferredSection>
+          </DeferredVisibilitySection>
 
-          <DeferredSection
+          <DeferredVisibilitySection
             fallback={
               <Card className="shadow-soft border-0">
                 <CardHeader>
@@ -242,7 +242,7 @@ const Dashboard = () => {
             >
               <AttackHistory userId={user.id} refreshKey={historyRefreshKey} />
             </Suspense>
-          </DeferredSection>
+          </DeferredVisibilitySection>
         </div>
       </div>
     </div>

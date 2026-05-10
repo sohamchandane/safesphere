@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import * as externalApis from '@/lib/externalApis';
-import { getApiKey, getApiUrl } from '@/lib/runtimeConfig';
+import { getApiUrl } from '@/lib/runtimeConfig';
 import { useTranslation } from 'react-i18next';
 
 interface RiskPredictionProps {
@@ -28,24 +28,25 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const readCachedPrediction = (key: string) => {
+  const getPredictionFromCache = (cacheKey: string) => {
     try {
-      const raw = window.localStorage.getItem(`${PREDICTION_CACHE_PREFIX}${key}`);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as { ts?: number; value?: typeof prediction };
-      if (!parsed || typeof parsed.ts !== 'number' || Date.now() - parsed.ts > PREDICTION_CACHE_TTL_MS) {
-        return null;
-      }
-      return parsed.value ?? null;
+      const cachedData = window.localStorage.getItem(`${PREDICTION_CACHE_PREFIX}${cacheKey}`);
+      if (!cachedData) return null;
+      
+      const cachedEntry = JSON.parse(cachedData) as { ts?: number; value?: typeof prediction };
+      const isExpired = !cachedEntry?.ts || Date.now() - cachedEntry.ts > PREDICTION_CACHE_TTL_MS;
+      
+      return isExpired ? null : (cachedEntry.value ?? null);
     } catch (error) {
       console.warn('Failed to read cached prediction', error);
       return null;
     }
   };
 
-  const writeCachedPrediction = (key: string, value: typeof prediction) => {
+  const savePredictionToCache = (cacheKey: string, predictionData: typeof prediction) => {
     try {
-      window.localStorage.setItem(`${PREDICTION_CACHE_PREFIX}${key}`, JSON.stringify({ ts: Date.now(), value }));
+      const cacheEntry = { ts: Date.now(), value: predictionData };
+      window.localStorage.setItem(`${PREDICTION_CACHE_PREFIX}${cacheKey}`, JSON.stringify(cacheEntry));
     } catch (error) {
       console.warn('Failed to persist cached prediction', error);
     }
@@ -61,7 +62,7 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
     }
     lastRunRef.current = { key: runKey, ts: now };
 
-    const cachedPrediction = readCachedPrediction(runKey);
+    const cachedPrediction = getPredictionFromCache(runKey);
     if (cachedPrediction) {
       setPrediction(cachedPrediction);
       return;
@@ -79,102 +80,78 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
         if (wpResult.status === 'rejected') {
           throw new Error(`Weather fetch failed: ${wpResult.reason?.message || String(wpResult.reason)}`);
         }
-        const wp = wpResult.value as any;
+        const weatherData = wpResult.value as any;
 
-        let pollen: { grass?: number | null; tree?: number | null; weed?: number | null } | null = null;
+        let pollenData: { grass?: number | null; tree?: number | null; weed?: number | null } | null = null;
         if (pollenResult.status === 'fulfilled') {
-          pollen = pollenResult.value as any;
+          pollenData = pollenResult.value as any;
         } else {
           console.warn('Pollen fetch failed, using fallback zeros', pollenResult.reason);
-          pollen = { grass: 0, tree: 0, weed: 0 };
+          pollenData = { grass: 0, tree: 0, weed: 0 };
         }
 
         // One-hot encode pollen into the exact features expected by model
-        const grassOH = externalApis.oneHotPollen(pollen?.grass ?? null, 'grass');
-        const treeOH = externalApis.oneHotPollen(pollen?.tree ?? null, 'tree');
-        const weedOH = externalApis.oneHotPollen(pollen?.weed ?? null, 'weed');
+        const grassPollenEncoded = externalApis.oneHotPollen(pollenData?.grass ?? null, 'grass');
+        const treePollenEncoded = externalApis.oneHotPollen(pollenData?.tree ?? null, 'tree');
+        const weedPollenEncoded = externalApis.oneHotPollen(pollenData?.weed ?? null, 'weed');
 
-        const toDeterministicInt = (s: string | number | undefined) => {
-          if (s === undefined || s === null) return 447;
-          const n = Number(s);
-          if (Number.isFinite(n)) return n;
-          const str = String(s);
-          let h = 2166136261 >>> 0;
-          for (let i = 0; i < str.length; i++) {
-            h ^= str.charCodeAt(i);
-            h = Math.imul(h, 16777619) >>> 0;
+        const hashStringToInteger = (value: string | number | undefined): number => {
+          if (value === undefined || value === null) return 447;
+          
+          const numValue = Number(value);
+          if (Number.isFinite(numValue)) return numValue;
+          
+          // FNV-1a hash for non-numeric strings
+          const stringValue = String(value);
+          let hash = 2166136261 >>> 0;
+          for (let i = 0; i < stringValue.length; i++) {
+            hash ^= stringValue.charCodeAt(i);
+            hash = Math.imul(hash, 16777619) >>> 0;
           }
-          return (h >>> 0) % 1000000000;
+          return (hash >>> 0) % 1000000000;
         };
 
-        const userKeyValue = toDeterministicInt(userId ?? undefined);
+        const userKey = hashStringToInteger(userId ?? undefined);
 
-        const payload: any = {
-          user_key: userKeyValue,
-          temperature: wp.temperature,
-          pressure: wp.pressure,
-          co: wp.components?.co ?? null,
-          no: wp.components?.no ?? null,
-          no2: wp.components?.no2 ?? null,
-          o3: wp.components?.o3 ?? null,
-          so2: wp.components?.so2 ?? null,
-          pm2_5: wp.components?.pm2_5 ?? null,
-          pm10: wp.components?.pm10 ?? null,
-          nh3: wp.components?.nh3 ?? null,
-          heart_rate: normalizedHeartRate,
-          grass_pollen_High: grassOH.high,
-          grass_pollen_Low: grassOH.low,
-          grass_pollen_Moderate: grassOH.moderate,
-          tree_pollen_High: treeOH.high,
-          tree_pollen_Low: treeOH.low,
-          tree_pollen_Moderate: treeOH.moderate,
-          weed_pollen_High: weedOH.high,
-          weed_pollen_Low: weedOH.low,
-          weed_pollen_Moderate: weedOH.moderate,
-          weed_pollen_Very_High: weedOH.very_high,
-        };
-
-        const toNumberOrZero = (v: any) => {
-          if (v === null || v === undefined) return 0;
-          const n = Number(v);
-          return Number.isFinite(n) ? n : 0;
+        const coerceToNumber = (value: any): number => {
+          if (value === null || value === undefined) return 0;
+          const numValue = Number(value);
+          return Number.isFinite(numValue) ? numValue : 0;
         };
 
         const sanitizedPayload = {
-          ...payload,
-          temperature: toNumberOrZero(payload.temperature),
-          pressure: toNumberOrZero(payload.pressure),
-          co: toNumberOrZero(payload.co),
-          no: toNumberOrZero(payload.no),
-          no2: toNumberOrZero(payload.no2),
-          o3: toNumberOrZero(payload.o3),
-          so2: toNumberOrZero(payload.so2),
-          pm2_5: toNumberOrZero(payload.pm2_5),
-          pm10: toNumberOrZero(payload.pm10),
-          nh3: toNumberOrZero(payload.nh3),
-          heart_rate: toNumberOrZero(payload.heart_rate),
-          grass_pollen_High: toNumberOrZero(payload.grass_pollen_High),
-          grass_pollen_Low: toNumberOrZero(payload.grass_pollen_Low),
-          grass_pollen_Moderate: toNumberOrZero(payload.grass_pollen_Moderate),
-          tree_pollen_High: toNumberOrZero(payload.tree_pollen_High),
-          tree_pollen_Low: toNumberOrZero(payload.tree_pollen_Low),
-          tree_pollen_Moderate: toNumberOrZero(payload.tree_pollen_Moderate),
-          weed_pollen_High: toNumberOrZero(payload.weed_pollen_High),
-          weed_pollen_Low: toNumberOrZero(payload.weed_pollen_Low),
-          weed_pollen_Moderate: toNumberOrZero(payload.weed_pollen_Moderate),
-          weed_pollen_Very_High: toNumberOrZero(payload.weed_pollen_Very_High),
+          user_key: userKey,
+          temperature: coerceToNumber(weatherData.temperature),
+          pressure: coerceToNumber(weatherData.pressure),
+          co: coerceToNumber(weatherData.components?.co),
+          no: coerceToNumber(weatherData.components?.no),
+          no2: coerceToNumber(weatherData.components?.no2),
+          o3: coerceToNumber(weatherData.components?.o3),
+          so2: coerceToNumber(weatherData.components?.so2),
+          pm2_5: coerceToNumber(weatherData.components?.pm2_5),
+          pm10: coerceToNumber(weatherData.components?.pm10),
+          nh3: coerceToNumber(weatherData.components?.nh3),
+          heart_rate: coerceToNumber(normalizedHeartRate),
+          grass_pollen_High: coerceToNumber(grassPollenEncoded.high),
+          grass_pollen_Low: coerceToNumber(grassPollenEncoded.low),
+          grass_pollen_Moderate: coerceToNumber(grassPollenEncoded.moderate),
+          tree_pollen_High: coerceToNumber(treePollenEncoded.high),
+          tree_pollen_Low: coerceToNumber(treePollenEncoded.low),
+          tree_pollen_Moderate: coerceToNumber(treePollenEncoded.moderate),
+          weed_pollen_High: coerceToNumber(weedPollenEncoded.high),
+          weed_pollen_Low: coerceToNumber(weedPollenEncoded.low),
+          weed_pollen_Moderate: coerceToNumber(weedPollenEncoded.moderate),
+          weed_pollen_Very_High: coerceToNumber(weedPollenEncoded.very_high),
           latitude: location.latitude,
           longitude: location.longitude,
         };
 
         const apiUrl = getApiUrl();
-        const apiKey = getApiKey();
 
         const resp = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(apiKey ? { 'x-api-key': apiKey } : {}),
           },
           body: JSON.stringify({ 
             features: sanitizedPayload,
@@ -201,13 +178,15 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
 
         const result = await resp.json();
 
-        const risk = result.risk_class === 1 || (result.probability ?? 0) >= 0.5;
-        const confidence = typeof result.probability === 'number' ? result.probability : 0;
-        const riskLevel = confidence >= 0.75 ? 'high' : confidence >= 0.5 ? 'moderate' : 'low';
-
-        const finalPred = { risk, confidence, riskLevel } as any;
-        setPrediction(finalPred);
-        writeCachedPrediction(runKey, finalPred);
+        const predictionResult = {
+          risk: result.risk_class === 1 || (result.probability ?? 0) >= 0.5,
+          confidence: typeof result.probability === 'number' ? result.probability : 0,
+          riskLevel: ('risk_level' in result && result.risk_level) || 
+                     ((result.probability ?? 0) >= 0.75 ? 'high' : (result.probability ?? 0) >= 0.5 ? 'moderate' : 'low') as 'low' | 'moderate' | 'high',
+        };
+        
+        setPrediction(predictionResult);
+        savePredictionToCache(runKey, predictionResult);
 
         try {
           const hasSupabase = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
@@ -228,12 +207,12 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
               pm2_5: sanitizedPayload.pm2_5,
               pm10: sanitizedPayload.pm10,
               nh3: sanitizedPayload.nh3,
-              grass_pollen: null, // Could store count if available
+              grass_pollen: null,
               tree_pollen: null,
               weed_pollen: null,
               heart_rate: sanitizedPayload.heart_rate,
-              attack_prediction: finalPred.risk,
-              prediction_confidence: finalPred.confidence,
+              attack_prediction: predictionResult.risk,
+              prediction_confidence: predictionResult.confidence,
               raw_payload: sanitizedPayload,
               raw_response: result,
             };
@@ -247,12 +226,12 @@ export const RiskPrediction = ({ location, heartRate, userId }: RiskPredictionPr
           console.warn('Unexpected error while saving monitoring data, continuing', e);
         }
 
-        if (finalPred.risk) {
+        if (predictionResult.risk) {
           toast({
             title: t('riskPrediction.alertTitle', { defaultValue: 'Risk Alert' }),
             description: t('riskPrediction.alertDescription', {
               defaultValue: '{{riskLevel}} risk of asthma attack detected',
-              riskLevel: finalPred.riskLevel.toUpperCase(),
+              riskLevel: predictionResult.riskLevel.toUpperCase(),
             }),
             variant: 'destructive',
           });

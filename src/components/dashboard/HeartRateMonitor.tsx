@@ -18,13 +18,17 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
   const { t } = useTranslation();
   const [isConnected, setIsConnected] = useState(false);
   const [currentHeartRate, setCurrentHeartRate] = useState<number | null>(null);
-  const [hrValues, setHrValues] = useState<number[]>([]);
-  const [manualHeartRate, setManualHeartRate] = useState('');
+  const [heartRateReadings, setHeartRateReadings] = useState<number[]>([]);
+  const [manualHeartRateInput, setManualHeartRateInput] = useState('');
   const { toast } = useToast();
-  const hrCharRef = useRef<any>(null);
-  const serverRef = useRef<any>(null);
-  const formatHeartRate = (value: number) => value.toFixed(1);
-  const normalizeHeartRate = (value: number) => Number(value.toFixed(1));
+  const heartRateCharacteristicRef = useRef<any>(null);
+  const bluetoothServerRef = useRef<any>(null);
+  
+  const formatHeartRate = (value: number): string => value.toFixed(1);
+  const normalizeHeartRate = (value: number): number => Number(value.toFixed(1));
+  
+  const calculateHeartRateAverage = (readings: number[]): number | null =>
+    readings.length > 0 ? normalizeHeartRate(readings.reduce((sum, rate) => sum + rate, 0) / readings.length) : null;
 
   const connectSmartwatch = async () => {
     try {
@@ -50,29 +54,30 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
       });
 
       const server: any = await device.gatt.connect();
-      serverRef.current = server;
+      bluetoothServerRef.current = server;
 
       // Heart Rate service and characteristic (0x180D service, 0x2A37 measurement)
-      const hrService: any = await server.getPrimaryService('heart_rate');
-      const hrChar: any = await hrService.getCharacteristic(0x2A37);
-      hrCharRef.current = hrChar;
+      const heartRateService: any = await server.getPrimaryService('heart_rate');
+      const heartRateCharacteristic: any = await heartRateService.getCharacteristic(0x2A37);
+      heartRateCharacteristicRef.current = heartRateCharacteristic;
 
-      hrChar.addEventListener('characteristicvaluechanged', (e: any) => {
-        const value = e.target.value;
-        const rate = value.getUint8(1);
+      const handleHeartRateChange = (event: any) => {
+        const dataView = event.target.value;
+        const heartRateValue = dataView.getUint8(1);
 
-        // maintain a rolling list of recent values (limit to 120 samples)
-        setHrValues(prev => {
-          const next = [...prev, normalizeHeartRate(rate)].slice(-120);
-          // update moving average as the displayed current heart rate
-          const avg = normalizeHeartRate(next.reduce((a, b) => a + b, 0) / next.length);
-          setCurrentHeartRate(avg);
-          onHeartRateUpdate(avg);
-          return next;
+        setHeartRateReadings(prevReadings => {
+          const updatedReadings = [...prevReadings, normalizeHeartRate(heartRateValue)].slice(-120);
+          const averageHeartRate = calculateHeartRateAverage(updatedReadings);
+          if (averageHeartRate !== null) {
+            setCurrentHeartRate(averageHeartRate);
+            onHeartRateUpdate(averageHeartRate);
+          }
+          return updatedReadings;
         });
-      });
+      };
 
-      await hrChar.startNotifications();
+      heartRateCharacteristic.addEventListener('characteristicvaluechanged', handleHeartRateChange);
+      await heartRateCharacteristic.startNotifications();
 
       setIsConnected(true);
       toast({
@@ -90,29 +95,36 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
   };
 
   const endSession = async () => {
-    // stop notifications and disconnect
-    const hrChar = hrCharRef.current;
-    const server = serverRef.current;
+    const heartRateCharacteristic = heartRateCharacteristicRef.current;
+    const bluetoothServer = bluetoothServerRef.current;
+    
     try {
-      if (hrChar && hrChar.stopNotifications) await hrChar.stopNotifications();
-    } catch (e) {
-      // ignore
+      if (heartRateCharacteristic?.stopNotifications) {
+        await heartRateCharacteristic.stopNotifications();
+      }
+    } catch (error) {
+      // Ignore disconnection errors
     }
+    
     try {
-      if (server && server.disconnect) server.disconnect();
-    } catch (e) {
-      // ignore
+      if (bluetoothServer?.disconnect) {
+        bluetoothServer.disconnect();
+      }
+    } catch (error) {
+      // Ignore disconnection errors
     }
+    
     setIsConnected(false);
 
-    // compute final average
-    const finalAvg = hrValues.length ? normalizeHeartRate(hrValues.reduce((a, b) => a + b, 0) / hrValues.length) : null;
-    if (onSessionEnd) onSessionEnd(finalAvg, hrValues);
+    const finalAverage = calculateHeartRateAverage(heartRateReadings);
+    if (onSessionEnd) onSessionEnd(finalAverage, heartRateReadings);
   };
 
-  const handleManualInput = () => {
-    const hr = normalizeHeartRate(Number.parseFloat(manualHeartRate));
-    if (isNaN(hr) || hr < 40 || hr > 200) {
+  const handleManualHeartRateSubmit = () => {
+    const parsedHeartRate = normalizeHeartRate(Number.parseFloat(manualHeartRateInput));
+    const isValidHeartRate = !isNaN(parsedHeartRate) && parsedHeartRate >= 40 && parsedHeartRate <= 200;
+    
+    if (!isValidHeartRate) {
       toast({
         title: t('heartRateMonitor.invalidHeartRate'),
         description: t('heartRateMonitor.invalidHeartRateDesc'),
@@ -121,30 +133,31 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
       return;
     }
 
-    setCurrentHeartRate(hr);
-    setHrValues(prev => [...prev, hr].slice(-120));
-    onHeartRateUpdate(hr);
+    setCurrentHeartRate(parsedHeartRate);
+    setHeartRateReadings(prevReadings => [...prevReadings, parsedHeartRate].slice(-120));
+    onHeartRateUpdate(parsedHeartRate);
+    
     toast({
       title: t('heartRateMonitor.updatedTitle'),
-      description: t('heartRateMonitor.updatedDesc', { hr }),
+      description: t('heartRateMonitor.updatedDesc', { hr: parsedHeartRate }),
     });
   };
 
   // Cleanup on unmount: stop notifications and disconnect
   useEffect(() => {
     return () => {
-      const hrChar = hrCharRef.current;
-      const server = serverRef.current;
-      if (hrChar && hrChar.stopNotifications) {
+      const heartRateCharacteristic = heartRateCharacteristicRef.current;
+      const bluetoothServer = bluetoothServerRef.current;
+      if (heartRateCharacteristic?.stopNotifications) {
         try {
-          hrChar.stopNotifications();
+          heartRateCharacteristic.stopNotifications();
         } catch (e) {
           // ignore
         }
       }
-      if (server && server.disconnect) {
+      if (bluetoothServer?.disconnect) {
         try {
-          server.disconnect();
+          bluetoothServer.disconnect();
         } catch (e) {
           // ignore
         }
@@ -269,18 +282,18 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
                     <p className="text-sm text-muted-foreground mt-2">{t('heartRateMonitor.liveReading')}</p>
                   </div>
                 )}
-                {hrValues.length > 0 && (
+                {heartRateReadings.length > 0 && (
                   <div className="pt-4">
                     <div className="text-sm text-muted-foreground space-y-1">
-                      <div>{t('heartRateMonitor.recentReadings')}: {hrValues.slice(-10).map((value) => value.toFixed(1)).join(', ')}</div>
+                      <div>{t('heartRateMonitor.recentReadings')}: {heartRateReadings.slice(-10).map((value) => formatHeartRate(value)).join(', ')}</div>
                       <div>
-                        {t('heartRateMonitor.summary')}: {formatHeartRate(normalizeHeartRate(hrValues.reduce((a, b) => a + b, 0) / hrValues.length))} bpm • {t('heartRateMonitor.min')}: {formatHeartRate(Math.min(...hrValues))} • {t('heartRateMonitor.max')}: {formatHeartRate(Math.max(...hrValues))}
+                        {t('heartRateMonitor.summary')}: {formatHeartRate(calculateHeartRateAverage(heartRateReadings) ?? 0)} bpm • {t('heartRateMonitor.min')}: {formatHeartRate(Math.min(...heartRateReadings))} • {t('heartRateMonitor.max')}: {formatHeartRate(Math.max(...heartRateReadings))}
                       </div>
                     </div>
 
                     <div className="mt-3 flex justify-center">
                       <svg width="240" height="60" viewBox={`0 0 240 60`}>
-                        <path d={sparklinePath(hrValues.slice(-60), 240, 60)} stroke="#2563eb" strokeWidth={2} fill="none" strokeLinecap="round" />
+                        <path d={sparklinePath(heartRateReadings.slice(-60), 240, 60)} stroke="#2563eb" strokeWidth={2} fill="none" strokeLinecap="round" />
                       </svg>
                     </div>
                   </div>
@@ -349,22 +362,24 @@ export const HeartRateMonitor = ({ onHeartRateUpdate, onSessionEnd }: HeartRateM
                   inputMode="decimal"
                   pattern="^\d{1,3}(?:\.\d)?$"
                   placeholder={t('heartRateMonitor.manualPlaceholder')}
-                  value={manualHeartRate}
-                  onChange={(e) => setManualHeartRate(e.target.value)}
+                  value={manualHeartRateInput}
+                  onChange={(e) => setManualHeartRateInput(e.target.value)}
                 />
               </div>
 
-              <Button onClick={handleManualInput} className="w-full bg-gradient-hero">
+              <Button onClick={handleManualHeartRateSubmit} className="w-full bg-gradient-hero">
                 {t('heartRateMonitor.setButton')}
               </Button>
 
               <Button
                 onClick={() => {
-                  const hr = normalizeHeartRate(Number.parseFloat(manualHeartRate));
-                  if (!isNaN(hr)) {
-                    const finalAvg = hr;
-                    if (onSessionEnd) onSessionEnd(finalAvg, [hr]);
-                    toast({ title: t('heartRateMonitor.submittedTitle'), description: t('heartRateMonitor.submittedDesc', { hr }) });
+                  const parsedHeartRate = normalizeHeartRate(Number.parseFloat(manualHeartRateInput));
+                  if (!isNaN(parsedHeartRate)) {
+                    if (onSessionEnd) onSessionEnd(parsedHeartRate, [parsedHeartRate]);
+                    toast({ 
+                      title: t('heartRateMonitor.submittedTitle'), 
+                      description: t('heartRateMonitor.submittedDesc', { hr: parsedHeartRate }) 
+                    });
                   }
                 }}
                 className="w-full mt-2"
