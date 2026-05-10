@@ -24,7 +24,6 @@ _last_sweep_error: str | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     global _reminder_worker_started
     if not _reminder_worker_started:
         if os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() in ("1", "true", "yes", "on"):
@@ -35,7 +34,6 @@ async def lifespan(app: FastAPI):
         else:
             print("Background reminder sweep disabled by ENABLE_BACKGROUND_REMINDER_SWEEP")
     yield
-    # Shutdown
     pass
 
 
@@ -70,9 +68,9 @@ ARTIFACT_FEATURE_NAMES = artifact.get('feature_names') if isinstance(artifact, d
 PIPELINE_FEATURE_NAMES = list(getattr(PIPELINE, 'feature_names_in_', [])) if PIPELINE is not None and hasattr(PIPELINE, 'feature_names_in_') else None
 PREDICT_COLUMNS = PIPELINE_FEATURE_NAMES or ARTIFACT_FEATURE_NAMES
 
-_http = requests.Session()
-_http.mount("https://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
-_http.mount("http://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
+http_client = requests.Session()
+http_client.mount("https://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
+http_client.mount("http://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
 
 class PredictRequest(BaseModel):
     features: dict
@@ -86,34 +84,43 @@ def canonical_name(s: str | None) -> str:
         return ""
     return ''.join(ch.lower() for ch in str(s) if ch.isalnum())
 
-def auth_ok(x_api_key: str | None, authorization: str | None = None) -> bool:
-    required = os.environ.get('PRED_API_KEY')
-    if required and x_api_key == required:
+from fastapi import Depends
+
+def get_supabase_client():
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not supabase_key:
+        return None
+    from supabase import create_client
+    return create_client(supabase_url, supabase_key)
+
+def verify_authentication(x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
+    required_key = os.environ.get('PRED_API_KEY')
+    
+    if required_key and x_api_key == required_key:
         return True
         
     if authorization and authorization.startswith("Bearer "):
         jwt_token = authorization.split(" ")[1]
-        try:
-            from supabase import create_client
-            supabase_url = os.environ.get("SUPABASE_URL")
-            supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-            if supabase_url and supabase_key:
-                client = create_client(supabase_url, supabase_key)
+        client = get_supabase_client()
+        if client:
+            try:
                 user_resp = client.auth.get_user(jwt_token)
                 if user_resp and user_resp.user:
                     return True
-        except Exception as e:
-            print(f"JWT verification failed: {e}")
-            pass
-            
-    return not required
-
+            except Exception as e:
+                print(f"JWT verification failed: {e}")
+                
+    if not required_key:
+        return True
+        
+    raise HTTPException(status_code=401, detail='Unauthorized: Invalid API key or Token')
 
 def is_missing_column_error(err: Exception, column_name: str, table_name: str) -> bool:
     msg = str(err).lower()
     missing_column_tokens = (
-        "pgrst204",  # PostgREST schema cache error
-        "42703",     # PostgreSQL undefined_column
+        "pgrst204",
+        "42703",
         "does not exist",
     )
     return (
@@ -146,7 +153,6 @@ def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
         email_id = profile_data.get("email_id")
         username = profile_data.get("username") or "User"
 
-        # If email_id column exists but value is null/blank, fallback to auth email.
         if not email_id:
             email_id = auth_email_fallback()
 
@@ -155,7 +161,6 @@ def get_profile_contact_info(supabase, user_id: str) -> tuple[str | None, str]:
         if not is_missing_column_error(e, "email_id", "profiles"):
             raise
 
-    # Fallback path when profiles.email_id does not exist.
     profile = supabase.table("profiles").select("username").eq("id", user_id).maybe_single().execute()
     profile_data = safe_response_data(profile, {})
     username = profile_data.get("username") or "User"
@@ -182,9 +187,9 @@ def send_plain_email(to_email: str, subject: str, body: str) -> bool:
             "api-key": brevo_api_key,
             "Content-Type": "application/json",
         }
-        resp = _http.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
-        if resp.status_code >= 400:
-            print(f"Brevo API error ({resp.status_code}): {resp.text}")
+        response = http_client.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15)
+        if response.status_code >= 400:
+            print(f"Brevo API error ({response.status_code}): {response.text}")
             return False
         print(f"Email sent via Brevo to {to_email}")
         return True
@@ -260,9 +265,7 @@ def send_ground_truth_reminder_email(
     return send_plain_email(to_email, subject, body)
 
 
-class EmailTestRequest(BaseModel):
-    email: str
-    username: str | None = None
+
 
 
 class GroundTruthReminderRequest(BaseModel):
@@ -275,17 +278,8 @@ class GroundTruthReminderRequest(BaseModel):
     recorded_at: str | None = None
 
 
-@app.post('/email-test')
-def email_test(req: EmailTestRequest):
-    """Send test email to validate email provider configuration."""
-    send_alert_email(req.email, req.username or "User", 0.66, {'latitude': 'N/A', 'longitude': 'N/A', 'heart_rate': 'N/A', 'temperature': 'N/A'})
-    return {"ok": True}
-
-
 @app.post('/ground-truth/reminder')
-def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
-    if not auth_ok(x_api_key, authorization):
-        raise HTTPException(status_code=401, detail='Invalid API key or Token')
+def ground_truth_reminder(req: GroundTruthReminderRequest, _ = Depends(verify_authentication)):
 
     sent = send_ground_truth_reminder_email(
         req.email,
@@ -295,7 +289,6 @@ def ground_truth_reminder(req: GroundTruthReminderRequest, x_api_key: str | None
         req.recorded_at,
     )
 
-    # Mark reminder timestamp to avoid duplicate reminder emails on future logins.
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if sent and supabase_url and supabase_service_role_key:
@@ -325,7 +318,6 @@ def run_ground_truth_reminder_sweep() -> dict:
     delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
     threshold_iso = (datetime.now(timezone.utc) - timedelta(minutes=delay_minutes)).isoformat()
 
-    # Fetch all unanswered sessions and keep only the latest per user.
     pending = supabase.table("monitoring_data").select(
         "id,user_id,timestamp,attack_prediction,prediction_confidence,ground_truth,reminder_sent_at"
     ).is_("ground_truth", None).order(
@@ -346,7 +338,6 @@ def run_ground_truth_reminder_sweep() -> dict:
             "skipped_already_reminded_count": 0,
         }
 
-    # Keep only the latest pending record per user.
     latest_by_user = {}
     for row in rows:
         uid = row.get("user_id")
@@ -365,8 +356,6 @@ def run_ground_truth_reminder_sweep() -> dict:
             skipped_not_due_count += 1
             continue
 
-        # Never send reminders for older backlog rows. If latest unanswered row has
-        # already been reminded, skip this user entirely until they answer in-app.
         if row.get("reminder_sent_at"):
             skipped_already_reminded_count += 1
             continue
@@ -409,10 +398,8 @@ def run_ground_truth_reminder_sweep() -> dict:
 
 
 @app.get('/ground-truth/reminder-status')
-def ground_truth_reminder_status(x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
+def ground_truth_reminder_status(_ = Depends(verify_authentication)):
     """Return reminder scheduler and delivery diagnostics."""
-    if not auth_ok(x_api_key, authorization):
-        raise HTTPException(status_code=401, detail='Invalid API key or Token')
 
     delay_minutes = int(os.getenv("GROUND_TRUTH_REMINDER_DELAY_MINUTES", "20"))
     interval_seconds = max(30, int(os.getenv("GROUND_TRUTH_SWEEP_INTERVAL_SECONDS", "60")))
@@ -484,14 +471,12 @@ def ground_truth_reminder_status(x_api_key: str | None = Header(None), authoriza
 
 
 @app.post('/ground-truth/reminder-sweep')
-def ground_truth_reminder_sweep(x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
+def ground_truth_reminder_sweep(_ = Depends(verify_authentication)):
     """Send reminders for unanswered predictions older than configured delay.
 
     Configure delay with env GROUND_TRUTH_REMINDER_DELAY_MINUTES (default: 20).
     Intended for periodic invocation from Render Cron.
     """
-    if not auth_ok(x_api_key, authorization):
-        raise HTTPException(status_code=401, detail='Invalid API key or Token')
 
     try:
         return run_ground_truth_reminder_sweep()
@@ -523,55 +508,47 @@ def _background_reminder_sweep_worker():
 
 
 @app.post('/predict')
-def predict(req: PredictRequest, x_api_key: str | None = Header(None), authorization: str | None = Header(None)):
-    if not auth_ok(x_api_key, authorization):
-        raise HTTPException(status_code=401, detail='Invalid API key or Token')
+def predict(request: PredictRequest, _ = Depends(verify_authentication)):
 
-    if artifact is None:
+    if PIPELINE is None:
         raise HTTPException(status_code=500, detail='Model not available on server')
 
-    pipeline = PIPELINE
-    cols_to_use = PREDICT_COLUMNS
-    if cols_to_use:
-        incoming_map = {canonical_name(k): k for k in req.features.keys()}
-        row = []
-        for f in cols_to_use:
-            if f in req.features:
-                row.append(req.features[f])
-            elif f.replace(' ', '_') in req.features:
-                row.append(req.features[f.replace(' ', '_')])
-            elif f.replace('_', ' ') in req.features:
-                row.append(req.features[f.replace('_', ' ')])
-            elif canonical_name(f) in incoming_map:
-                row.append(req.features[incoming_map[canonical_name(f)]])
+    if PREDICT_COLUMNS:
+        incoming_map = {canonical_name(k): k for k in request.features.keys()}
+        row_data = []
+        for feature_name in PREDICT_COLUMNS:
+            if feature_name in request.features:
+                row_data.append(request.features[feature_name])
+            elif feature_name.replace(' ', '_') in request.features:
+                row_data.append(request.features[feature_name.replace(' ', '_')])
+            elif feature_name.replace('_', ' ') in request.features:
+                row_data.append(request.features[feature_name.replace('_', ' ')])
+            elif canonical_name(feature_name) in incoming_map:
+                row_data.append(request.features[incoming_map[canonical_name(feature_name)]])
             else:
-                row.append(np.nan)
-        X = pd.DataFrame([row], columns=cols_to_use)
+                row_data.append(np.nan)
+        features_df = pd.DataFrame([row_data], columns=PREDICT_COLUMNS)
     else:
-        X = pd.DataFrame([req.features])
+        features_df = pd.DataFrame([request.features])
 
-    if 'user_key' in X.columns:
-        X['user_key'] = pd.to_numeric(X['user_key'], errors='coerce').fillna(447)
+    if 'user_key' in features_df.columns:
+        features_df['user_key'] = pd.to_numeric(features_df['user_key'], errors='coerce').fillna(447)
 
     try:
-        proba = pipeline.predict_proba(X)[0, 1]
-        pred = int(proba >= 0.5)
+        attack_probability = PIPELINE.predict_proba(features_df)[0, 1]
+        is_high_risk = int(attack_probability >= 0.5)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Prediction failed: {e}')
 
-    resp = {'probability': float(proba), 'risk_class': int(pred)}
+    response_data = {'probability': float(attack_probability), 'risk_class': is_high_risk}
     
-    if req.email:
-        send_alert_email(req.email, req.username or "User", proba, req.features)
+    if request.email:
+        send_alert_email(request.email, request.username or "User", attack_probability, request.features)
     
-    return resp
+    return response_data
 
 
-# ============================================================================
-# WEATHER AND POLLEN PROXY ENDPOINTS (keeps external API keys server-side)
-# ============================================================================
 
-@app.get("/api/weather-pollution")
 @app.get("/weather-pollution")
 async def get_weather_pollution(lat: float, lon: float):
     """
@@ -588,13 +565,11 @@ async def get_weather_pollution(lat: float, lon: float):
                 'components': None
             }
         
-        # Call OpenWeather API for weather data
         weather_url = f'https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}'
-        weather_resp = _http.get(weather_url, timeout=10)
+        weather_resp = http_client.get(weather_url, timeout=10)
         
-        # Call OpenWeather API for pollution data
         pollution_url = f'https://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}'
-        pollution_resp = _http.get(pollution_url, timeout=10)
+        pollution_resp = http_client.get(pollution_url, timeout=10)
         
         if not weather_resp.ok or not pollution_resp.ok:
             return {
@@ -607,11 +582,9 @@ async def get_weather_pollution(lat: float, lon: float):
         weather_data = weather_resp.json()
         pollution_data = pollution_resp.json()
         
-        # Extract weather info
         temperature = weather_data.get('main', {}).get('temp')
         pressure = weather_data.get('main', {}).get('pressure')
         
-        # Extract pollution info
         aqi = None
         components = None
         if pollution_data.get('list'):
@@ -638,7 +611,6 @@ async def get_weather_pollution(lat: float, lon: float):
         }
 
 
-@app.get("/api/pollen")
 @app.get("/pollen")
 async def get_pollen(lat: float, lon: float):
     """
@@ -646,17 +618,15 @@ async def get_pollen(lat: float, lon: float):
     Open-Meteo API is free and doesn't require authentication.
     """
     try:
-        # Open-Meteo is free and doesn't need API key
         url = f'https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&hourly=grass_pollen,tree_pollen,weed_pollen&timezone=UTC'
-        resp = _http.get(url, timeout=10)
+        response = http_client.get(url, timeout=10)
         
-        if not resp.ok:
+        if not response.ok:
             return {'grass': 0, 'tree': 0, 'weed': 0}
         
-        data = resp.json()
+        data = response.json()
         hourly = data.get('hourly', {})
         
-        # Get current hour's pollen data (first entry in hourly array)
         grass = hourly.get('grass_pollen', [0])[0] if hourly.get('grass_pollen') else 0
         tree = hourly.get('tree_pollen', [0])[0] if hourly.get('tree_pollen') else 0
         weed = hourly.get('weed_pollen', [0])[0] if hourly.get('weed_pollen') else 0
@@ -676,15 +646,14 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     username: str
-    dob: str  # YYYY-MM-DD
+    dob: str
     gender: str
     phone_number: str
     email_id: str | None = None
-    # Medical history fields
     diagnosis_status: bool
     diagnosis_date: str | None = None
     known_triggers: list | None = None
-    attack_history: list | dict | None = None  # Accept both list and dict
+    attack_history: list | dict | None = None
     current_symptoms: list | None = None
     respiratory_issues: list | None = None
     allergies: list | None = None
@@ -700,14 +669,12 @@ async def register(req: RegisterRequest):
     try:
         from supabase import create_client
         
-        # Get Supabase credentials from environment
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
         if not supabase_url or not supabase_service_role_key:
             raise HTTPException(status_code=500, detail="Supabase credentials not configured")
         
-        # Create Supabase client with service role (bypasses RLS)
         supabase = create_client(supabase_url, supabase_service_role_key)
 
         normalized_email = (req.email or "").strip().lower()
@@ -715,12 +682,10 @@ async def register(req: RegisterRequest):
         if not normalized_email or not normalized_username:
             raise HTTPException(status_code=400, detail="Email and username are required")
 
-        # 1. Check if username is already taken before creating auth user.
         existing_profile = supabase.table("profiles").select("id").eq("username", normalized_username).limit(1).execute()
         if safe_response_data(existing_profile, []):
             raise HTTPException(status_code=409, detail="Username is already taken")
         
-        # 2. Best-effort check if user already exists by email.
         try:
             existing_users_resp = supabase.auth.admin.list_users()
             users = getattr(existing_users_resp, "users", None) or []
@@ -742,8 +707,6 @@ async def register(req: RegisterRequest):
         user_id = str(auth_response.user.id)
         created_user_id = user_id
         
-        # 3. Upsert profile (using service role, so RLS doesn't apply)
-        # Upsert allows atomic update-or-insert, so retries won't fail
         profile_data = {
             "id": user_id,
             "username": normalized_username,
@@ -756,7 +719,6 @@ async def register(req: RegisterRequest):
         try:
             supabase.table("profiles").upsert(profile_data, on_conflict="id").execute()
         except Exception as profile_error:
-            # Backward compatibility for deployments where profiles.email_id column isn't present yet.
             if is_missing_column_error(profile_error, "email_id", "profiles"):
                 fallback_profile_data = {k: v for k, v in profile_data.items() if k != "email_id"}
                 supabase.table("profiles").upsert(fallback_profile_data, on_conflict="id").execute()
@@ -764,8 +726,6 @@ async def register(req: RegisterRequest):
             else:
                 raise
         
-        # 4. Upsert medical history
-        # Convert attack_history to proper JSONB format (array or object both work)
         attack_history_value = req.attack_history if req.attack_history is not None else []
         
         medical_data = {
@@ -791,13 +751,10 @@ async def register(req: RegisterRequest):
         }
     
     except HTTPException:
-        # Re-raise HTTP exceptions (like 409 conflict)
         raise
     except Exception as e:
         error_text = str(e)
 
-        # If auth user was created but profile/medical write failed, clean it up
-        # so retry doesn't hit a false "user already exists" state.
         if created_user_id:
             try:
                 from supabase import create_client
