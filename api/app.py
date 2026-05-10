@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 import os
 import joblib
 import numpy as np
@@ -14,13 +15,31 @@ from datetime import datetime, timezone, timedelta
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-app = FastAPI(title="SafeSphere Prediction API")
-
 _reminder_worker_started = False
 _last_sweep_started_at: str | None = None
 _last_sweep_completed_at: str | None = None
 _last_sweep_result: dict | None = None
 _last_sweep_error: str | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global _reminder_worker_started
+    if not _reminder_worker_started:
+        if os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() in ("1", "true", "yes", "on"):
+            worker = threading.Thread(target=_background_reminder_sweep_worker, daemon=True, name="ground-truth-reminder-sweep")
+            worker.start()
+            _reminder_worker_started = True
+            print("Background reminder sweep worker started")
+        else:
+            print("Background reminder sweep disabled by ENABLE_BACKGROUND_REMINDER_SWEEP")
+    yield
+    # Shutdown
+    pass
+
+
+app = FastAPI(title="SafeSphere Prediction API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -485,22 +504,6 @@ def _background_reminder_sweep_worker():
         time.sleep(interval_seconds)
 
 
-@app.on_event("startup")
-def start_background_reminder_sweep():
-    global _reminder_worker_started
-    if _reminder_worker_started:
-        return
-
-    if os.getenv("ENABLE_BACKGROUND_REMINDER_SWEEP", "true").strip().lower() not in ("1", "true", "yes", "on"):
-        print("Background reminder sweep disabled by ENABLE_BACKGROUND_REMINDER_SWEEP")
-        return
-
-    worker = threading.Thread(target=_background_reminder_sweep_worker, daemon=True, name="ground-truth-reminder-sweep")
-    worker.start()
-    _reminder_worker_started = True
-    print("Background reminder sweep worker started")
-
-
 @app.post('/predict')
 def predict(req: PredictRequest, x_api_key: str | None = Header(None)):
     if not auth_ok(x_api_key):
@@ -551,6 +554,7 @@ def predict(req: PredictRequest, x_api_key: str | None = Header(None)):
 # ============================================================================
 
 @app.get("/api/weather-pollution")
+@app.get("/weather-pollution")
 async def get_weather_pollution(lat: float, lon: float):
     """
     Proxy endpoint for weather and pollution data.
@@ -617,6 +621,7 @@ async def get_weather_pollution(lat: float, lon: float):
 
 
 @app.get("/api/pollen")
+@app.get("/pollen")
 async def get_pollen(lat: float, lon: float):
     """
     Proxy endpoint for pollen data.
